@@ -5,17 +5,8 @@ import { collection, doc, setDoc, deleteDoc, onSnapshot, getDocs } from "firebas
 
 
 
-// ---- Responsive hook --------------------------------------------------------
-function useIsPad() {
-  const [isPad, setIsPad] = useState(false);
-  useEffect(() => {
-    const check = () => setIsPad(window.innerWidth >= 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-  return isPad;
-}
+// ---- Responsive helper ------------------------------------------------------
+const useIsPad = () => typeof window !== "undefined" && window.innerWidth >= 768;
 
 // ---- Constants ---------------------------------------------------------------
 const VACCINES = [
@@ -970,7 +961,7 @@ export default function PawPark() {
 
       {showUM && <UserMgr dark={dark} users={users} onSave={saveUsers} onClose={() => setShowUM(false)} />}
 
-      <main style={{ flex:1, padding:useIsPad()?"28px 32px":"20px 22px", maxWidth:1200, margin:"0 auto", width:"100%", boxSizing:"border-box" }}>
+      <main style={{ flex:1, padding:"20px 22px", maxWidth:1200, margin:"0 auto", width:"100%", boxSizing:"border-box" }}>
 
         {/* Dashboard */}
         {view === "dashboard" && (
@@ -982,7 +973,7 @@ export default function PawPark() {
               </div>
               {vacAlerts.length > 0 && <div style={{ textAlign:"right" }}><div style={{ fontSize:11, color:t.text3, marginBottom:5 }}>{vacAlerts.length} perrito{vacAlerts.length>1?"s":""} requieren atencion</div><button onClick={() => setView("list")} style={{ padding:"6px 14px", borderRadius:9, border:"1.5px solid " + t.acc, background:"transparent", color:t.acc, fontWeight:700, fontSize:12, cursor:"pointer" }}>Ver todos</button></div>}
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:useIsPad()?16:11 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:11 }}>
               {[{icon:"🐕",v:dogs.length,label:"Expedientes",c:t.acc},{icon:"✅",v:dogs.filter(d=>ovs(d)==="ok").length,label:"Vacunas al dia",c:"#22C55E"},{icon:"⚠",v:dogs.filter(d=>ovs(d)==="soon").length,label:"Por vencer",c:"#AACC71"},{icon:"🚨",v:dogs.filter(d=>ovs(d)==="expired").length,label:"Vencidas",c:"#EF4444"},{icon:"🎓",v:dogs.filter(d=>d.care?.result==="apt").length,label:"Aptos guarderia",c:"#8B5CF6"}].map(s => (
                 <Card key={s.label} dark={dark} style={{ border:"2px solid " + s.c + "20" }}>
                   <div style={{ fontSize:22, marginBottom:6 }}>{s.icon}</div>
