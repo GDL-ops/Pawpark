@@ -4,6 +4,18 @@ import { collection, doc, setDoc, deleteDoc, onSnapshot, getDocs } from "firebas
 
 
 
+
+// ---- Responsive hook --------------------------------------------------------
+function useIsPad() {
+  const [isPad, setIsPad] = useState(() => window.innerWidth >= 768);
+  useEffect(() => {
+    const fn = () => setIsPad(window.innerWidth >= 768);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return isPad;
+}
+
 // ---- Constants ---------------------------------------------------------------
 const VACCINES = [
   { id:"giardia",                 label:"Giardia",                 icon:"🦠", months:6  },
@@ -19,7 +31,7 @@ const BRESULT = {
   pending:    { label:"Pendiente",             icon:"⏳", color:"#9CA3AF", bg:"#F9FAFB", border:"#E5E7EB" },
   apt:        { label:"Apto - Guarderia",      icon:"✅", color:"#22C55E", bg:"#F0FDF4", border:"#86EFAC" },
   training:   { label:"Adiestramiento",        icon:"🎓", color:"#8B5CF6", bg:"#F5F3FF", border:"#C4B5FD" },
-  observation:{ label:"En Observacion",        icon:"👁", color:"#F59E0B", bg:"#FFFBEB", border:"#FDE68A" },
+  observation:{ label:"En Observacion",        icon:"👁", color:"#AACC71", bg:"#E8F0DC", border:"#AACC71" },
 };
 const BCRITERIA = [
   { id:"sociabilidad", label:"Sociabilidad con otros perros" },
@@ -28,17 +40,17 @@ const BCRITERIA = [
   { id:"estres",       label:"Manejo del estres"             },
   { id:"juego",        label:"Juego apropiado"               },
 ];
-const SCORE_META = { 3:{label:"Excelente",color:"#22C55E"}, 2:{label:"Bien",color:"#84CC16"}, 1:{label:"Regular",color:"#F59E0B"}, 0:{label:"Deficiente",color:"#EF4444"} };
+const SCORE_META = { 3:{label:"Excelente",color:"#22C55E"}, 2:{label:"Bien",color:"#84CC16"}, 1:{label:"Regular",color:"#AACC71"}, 0:{label:"Deficiente",color:"#EF4444"} };
 const VST = {
   expired:{ label:"Vencida",      color:"#EF4444", bg:"#FEF2F2" },
-  soon:   { label:"Por vencer",   color:"#F59E0B", bg:"#FFFBEB" },
+  soon:   { label:"Por vencer",   color:"#AACC71", bg:"#E8F0DC" },
   ok:     { label:"Al dia",       color:"#22C55E", bg:"#F0FDF4" },
   none:   { label:"Sin registro", color:"#9CA3AF", bg:"#F9FAFB" },
 };
-const SUPV = { bajo:{label:"BAJO",color:"#22C55E",bg:"#F0FDF4"}, medio:{label:"MEDIO",color:"#F59E0B",bg:"#FFFBEB"}, alto:{label:"ALTO",color:"#EF4444",bg:"#FEF2F2"} };
+const SUPV = { bajo:{label:"BAJO",color:"#22C55E",bg:"#F0FDF4"}, medio:{label:"MEDIO",color:"#AACC71",bg:"#E8F0DC"}, alto:{label:"ALTO",color:"#EF4444",bg:"#FEF2F2"} };
 const HOME_PANELS = [{id:"dashboard",label:"Panel General",icon:"📊"},{id:"hotel",label:"Hotel",icon:"🏨"},{id:"conducta",label:"Conducta",icon:"🎓"},{id:"grooming",label:"Grooming",icon:"✂"},{id:"guarderia",label:"Guarderia",icon:"🐾"}];
 const STAFF_EDITABLE = new Set(["alimentacion","cuidador","grooming","hotel","seguimiento"]);
-const DEFAULT_ADMIN = { id:"admin", name:"Admin", pin:"1234", isAdmin:true, homePanel:"dashboard", color:"#F59E0B" };
+const DEFAULT_ADMIN = { id:"admin", name:"Admin", pin:"1234", isAdmin:true, homePanel:"dashboard", color:"#AACC71" };
 const AREAS = ["Guarderia","Hotel","Grooming","Adiestramiento","Daycare"];
 
 // ---- Helpers ----------------------------------------------------------------
@@ -49,7 +61,7 @@ function ovs(dog) { const ss = VACCINES.map(v => gvs(dog.vaccinations?.[v.id]));
 const pmiss = dog => { const m = []; if (!dog.responsivas?.guarderia?.name) m.push("Responsiva Guarderia"); if (!dog.responsivas?.hotel?.name) m.push("Responsiva Hotel"); return m; };
 const defVac = () => Object.fromEntries(VACCINES.map(v => [v.id, { applied:"", expiry:"" }]));
 const defDog = () => ({
-  id:mkId(), photoColor:"#F59E0B",
+  id:mkId(), photoColor:"#AACC71",
   name:"", breed:"", sex:"", age:"", weight:"", color:"", sterilized:"", lastCelo:"",
   owner:"", phone:"", authorizedPeople:"", emergencyVet:"", emergencyVetPhone:"",
   allergies:"", medicalConditions:"", medications:"", dosage:"",
@@ -83,19 +95,19 @@ function openWA(phone, msg) {
 // ---- Style helpers ----------------------------------------------------------
 function useT(dark) {
   return {
-    bg: dark ? "#0F1117" : "#F4F6FA",
-    surf: dark ? "#1A1D27" : "#FFFFFF",
-    surf2: dark ? "#22273A" : "#F0F2F7",
-    bord: dark ? "#2E3350" : "#E2E6EF",
-    text: dark ? "#F0F2FF" : "#111827",
-    text2: dark ? "#8B91B0" : "#6B7280",
-    text3: dark ? "#555E80" : "#9CA3AF",
-    acc: "#F59E0B",
-    accD: "#D97706",
-    accBg: dark ? "#2D2200" : "#FFFBEB",
-    red: "#EF4444",
-    green: "#22C55E",
-    head: dark ? "linear-gradient(135deg,#1A1D27,#2A2200)" : "linear-gradient(135deg,#7C3A1A,#D97706)",
+    bg:    dark ? "#0D1510" : "#F2EEDD",
+    surf:  dark ? "#112018" : "#FFFFFF",
+    surf2: dark ? "#1A2E22" : "#EBE8DE",
+    bord:  dark ? "#1E3D2A" : "#C8C4B4",
+    text:  dark ? "#F2EEDD" : "#111827",
+    text2: dark ? "#7AAB8A" : "#4A5568",
+    text3: dark ? "#3D6B4F" : "#8A8578",
+    acc:   "#AACC71",
+    accD:  "#143B31",
+    accBg: dark ? "#0D2018" : "#E4EDD6",
+    red:   "#EF4444",
+    green: "#AACC71",
+    head:  dark ? "linear-gradient(135deg,#0D1510,#143B31)" : "linear-gradient(135deg,#35201E,#143B31)",
   };
 }
 
@@ -120,7 +132,7 @@ function BehBadge({ result, sm }) {
 }
 
 function DogAvatar({ dog, size=44 }) {
-  const c = dog.photoColor || "#F59E0B";
+  const c = dog.photoColor || "#AACC71";
   return (
     <div style={{ width:size, height:size, borderRadius:"50%", background:"linear-gradient(135deg," + c + "," + c + "99)", display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontWeight:800, fontSize:size*0.34, flexShrink:0, boxShadow:"0 2px 8px " + c + "50" }}>
       {dog.name?.slice(0,2).toUpperCase() || "🐕"}
@@ -130,7 +142,8 @@ function DogAvatar({ dog, size=44 }) {
 
 function Lbl({ children, dark }) {
   const t = useT(dark);
-  return <label style={{ fontSize:11, fontWeight:700, color:t.text3, letterSpacing:"0.06em", display:"block", marginBottom:5 }}>{children}</label>;
+  const pad = useIsPad();
+  return <label style={{ fontSize:pad?13:11, fontWeight:700, color:t.text3, letterSpacing:"0.06em", display:"block", marginBottom:pad?7:5 }}>{children}</label>;
 }
 
 function SecTitle({ children, dark }) {
@@ -144,46 +157,55 @@ function SecTitle({ children, dark }) {
 
 function IRow({ label, value, dark }) {
   const t = useT(dark);
+  const pad = useIsPad();
   if (!value && value !== 0) return null;
   return (
     <div>
-      <div style={{ fontSize:9, fontWeight:800, color:t.text3, letterSpacing:"0.1em", marginBottom:3 }}>{label}</div>
-      <div style={{ fontSize:13, color:t.text, lineHeight:1.6, background:t.surf2, borderRadius:10, padding:"7px 11px", border:"1px solid " + t.bord }}>{value}</div>
+      <div style={{ fontSize:pad?11:9, fontWeight:800, color:t.text3, letterSpacing:"0.1em", marginBottom:pad?5:3 }}>{label}</div>
+      <div style={{ fontSize:pad?15:13, color:t.text, lineHeight:1.6, background:t.surf2, borderRadius:pad?12:10, padding:pad?"10px 15px":"7px 11px", border:"1px solid " + t.bord }}>{value}</div>
     </div>
   );
 }
 
-function IGrid({ children, cols=2 }) { return <div style={{ display:"grid", gridTemplateColumns:"repeat(" + cols + ",1fr)", gap:10 }}>{children}</div>; }
+function IGrid({ children, cols=2 }) { const pad = useIsPad(); return <div style={{ display:"grid", gridTemplateColumns:"repeat(" + cols + ",1fr)", gap:pad?14:10 }}>{children}</div>; }
 
 function ROBanner({ dark }) {
   const t = useT(dark);
   return <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:10, background:t.surf2, border:"1px solid " + t.bord, marginBottom:8 }}><span>🔒</span><span style={{ fontSize:12, color:t.text2, fontWeight:600 }}>Solo el administrador puede editar esta seccion</span></div>;
 }
 
-function inp(dark, disabled) {
+function inp(dark, disabled, pad) {
   const t = useT(dark);
-  return disabled ? { width:"100%", padding:"10px 12px", borderRadius:10, border:"1.5px solid " + t.bord, fontSize:13, background:t.surf2, outline:"none", color:t.text3, boxSizing:"border-box", cursor:"not-allowed" }
-    : { width:"100%", padding:"10px 12px", borderRadius:10, border:"1.5px solid " + t.bord, fontSize:13, background:t.surf, outline:"none", color:t.text, boxSizing:"border-box" };
+  const p = pad ? "13px 16px" : "10px 12px";
+  const fs = pad ? 15 : 13;
+  const br = pad ? 12 : 10;
+  return disabled
+    ? { width:"100%", padding:p, borderRadius:br, border:"1.5px solid "+t.bord, fontSize:fs, background:t.surf2, outline:"none", color:t.text3, boxSizing:"border-box", cursor:"not-allowed" }
+    : { width:"100%", padding:p, borderRadius:br, border:"1.5px solid "+t.bord, fontSize:fs, background:t.surf, outline:"none", color:t.text, boxSizing:"border-box" };
 }
 
 function Field({ label, value, onChange, placeholder, type="text", dark, disabled }) {
-  return <div><Lbl dark={dark}>{label}</Lbl><input type={type} value={value||""} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} disabled={disabled||!onChange} style={inp(dark, disabled||!onChange)} /></div>;
+  const pad = useIsPad();
+  return <div><Lbl dark={dark}>{label}</Lbl><input type={type} value={value||""} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} disabled={disabled||!onChange} style={inp(dark, disabled||!onChange, pad)} /></div>;
 }
 function TA({ label, value, onChange, placeholder, rows=3, dark, disabled }) {
-  return <div><Lbl dark={dark}>{label}</Lbl><textarea value={value||""} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} rows={rows} disabled={disabled||!onChange} style={{ ...inp(dark, disabled||!onChange), resize:"vertical", fontFamily:"inherit", lineHeight:1.55 }} /></div>;
+  const pad = useIsPad();
+  return <div><Lbl dark={dark}>{label}</Lbl><textarea value={value||""} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} rows={rows} disabled={disabled||!onChange} style={{ ...inp(dark, disabled||!onChange, pad), resize:"vertical", fontFamily:"inherit", lineHeight:1.55 }} /></div>;
 }
 function Sel({ label, options, value, onChange, dark, disabled }) {
-  return <div><Lbl dark={dark}>{label}</Lbl><select value={value||""} onChange={e=>onChange&&onChange(e.target.value)} disabled={disabled||!onChange} style={{ ...inp(dark, disabled||!onChange), cursor:disabled?"not-allowed":"pointer" }}><option value="">Seleccionar...</option>{options.map(o=><option key={o.value||o} value={o.value||o}>{o.label||o}</option>)}</select></div>;
+  const pad = useIsPad();
+  return <div><Lbl dark={dark}>{label}</Lbl><select value={value||""} onChange={e=>onChange&&onChange(e.target.value)} disabled={disabled||!onChange} style={{ ...inp(dark, disabled||!onChange, pad), cursor:disabled?"not-allowed":"pointer" }}><option value="">Seleccionar...</option>{options.map(o=><option key={o.value||o} value={o.value||o}>{o.label||o}</option>)}</select></div>;
 }
 function Radio({ label, value, onChange, options, dark, disabled }) {
   const t = useT(dark);
+  const pad = useIsPad();
   return (
     <div>
       <Lbl dark={dark}>{label}</Lbl>
-      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:pad?10:8, flexWrap:"wrap" }}>
         {options.map(o => (
-          <button key={o.value} onClick={() => onChange && !disabled && onChange(o.value)} style={{ padding:"7px 16px", borderRadius:10, border:"1.5px solid " + (value===o.value ? t.acc : t.bord), background:value===o.value ? t.accBg : t.surf, color:value===o.value ? t.accD : t.text2, fontWeight:700, fontSize:12.5, cursor:disabled?"default":"pointer", display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ width:13, height:13, borderRadius:"50%", border:"2px solid " + (value===o.value ? t.acc : t.bord), background:value===o.value ? t.acc : "transparent", display:"inline-block", flexShrink:0 }} />
+          <button key={o.value} onClick={() => onChange && !disabled && onChange(o.value)} style={{ padding:pad?"9px 20px":"7px 16px", borderRadius:pad?12:10, border:"1.5px solid " + (value===o.value ? t.acc : t.bord), background:value===o.value ? t.accBg : t.surf, color:value===o.value ? t.accD : t.text2, fontWeight:700, fontSize:pad?14:12.5, cursor:disabled?"default":"pointer", display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ width:pad?15:13, height:pad?15:13, borderRadius:"50%", border:"2px solid " + (value===o.value ? t.acc : t.bord), background:value===o.value ? t.acc : "transparent", display:"inline-block", flexShrink:0 }} />
             {o.label}
           </button>
         ))}
@@ -194,12 +216,13 @@ function Radio({ label, value, onChange, options, dark, disabled }) {
 
 function TabBar({ tabs, active, onChange, dark }) {
   const t = useT(dark);
+  const pad = useIsPad();
   return (
-    <div style={{ display:"flex", gap:3, background:t.surf2, borderRadius:12, padding:4, overflowX:"auto", flexWrap:"wrap" }}>
+    <div style={{ display:"flex", gap:pad?5:3, background:t.surf2, borderRadius:pad?14:12, padding:pad?6:4, overflowX:"auto", flexWrap:"wrap" }}>
       {tabs.map(tab => (
-        <button key={tab.id} onClick={() => onChange(tab.id)} style={{ flexShrink:0, padding:"8px 13px", borderRadius:10, border:"none", whiteSpace:"nowrap", background:active===tab.id?t.surf:"transparent", color:active===tab.id?t.text:t.text3, fontWeight:700, fontSize:12, cursor:"pointer", boxShadow:active===tab.id?"0 1px 6px #0000001A":"none", transition:"all 0.15s" }}>
+        <button key={tab.id} onClick={() => onChange(tab.id)} style={{ flexShrink:0, padding:pad?"11px 18px":"8px 13px", borderRadius:pad?12:10, border:"none", whiteSpace:"nowrap", background:active===tab.id?t.surf:"transparent", color:active===tab.id?t.text:t.text3, fontWeight:700, fontSize:pad?14:12, cursor:"pointer", boxShadow:active===tab.id?"0 1px 6px #0000001A":"none", transition:"all 0.15s" }}>
           {tab.label}
-          {tab.badge ? <span style={{ background:t.red, color:"white", borderRadius:99, padding:"0 5px", fontSize:9, fontWeight:800, marginLeft:3 }}>{tab.badge}</span> : null}
+          {tab.badge ? <span style={{ background:t.red, color:"white", borderRadius:99, padding:"0 5px", fontSize:pad?10:9, fontWeight:800, marginLeft:3 }}>{tab.badge}</span> : null}
         </button>
       ))}
     </div>
@@ -209,9 +232,10 @@ function TabBar({ tabs, active, onChange, dark }) {
 function Card({ children, style={}, onClick, dark }) {
   const t = useT(dark);
   const [hov, setHov] = useState(false);
+  const pad = useIsPad();
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background:t.surf, borderRadius:18, border:"1.5px solid " + t.bord, padding:"18px 20px", boxShadow:hov&&onClick?"0 8px 24px #00000018":"0 2px 8px #0000000A", transition:"all 0.2s", cursor:onClick?"pointer":"default", transform:hov&&onClick?"translateY(-2px)":"translateY(0)", ...style }}>
+      style={{ background:t.surf, borderRadius:pad?22:18, border:"1.5px solid " + t.bord, padding:pad?"24px 28px":"18px 20px", boxShadow:hov&&onClick?"0 8px 24px #00000018":"0 2px 8px #0000000A", transition:"all 0.2s", cursor:onClick?"pointer":"default", transform:hov&&onClick?"translateY(-2px)":"translateY(0)", ...style }}>
       {children}
     </div>
   );
@@ -323,12 +347,12 @@ function StayCard({ stay, dog, onDelete, onChange, currentUser, readOnly, dark }
   const delInc = id => onChange({...stay, incidents:(stay.incidents||[]).filter(i => i.id !== id)});
   return (
     <div style={{ borderRadius:18, border:"1.5px solid " + t.bord, overflow:"hidden", boxShadow:"0 2px 12px #0000000A" }}>
-      <div style={{ background:"linear-gradient(135deg,#7C3A1A,#D97706)", padding:"13px 18px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+      <div style={{ background:"linear-gradient(135deg,#35201E,#143B31)", padding:"13px 18px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
           <span style={{ fontSize:20 }}>🏨</span>
           <div>
             <div style={{ color:"white", fontWeight:800, fontSize:15 }}>{dog.name}</div>
-            <div style={{ color:"#FDE68A", fontSize:12 }}>{stay.checkIn && stay.checkOut ? stay.checkIn + " al " + stay.checkOut : stay.checkIn || stay.checkOut || "Fechas pendientes"}</div>
+            <div style={{ color:"#AACC71", fontSize:12 }}>{stay.checkIn && stay.checkOut ? stay.checkIn + " al " + stay.checkOut : stay.checkIn || stay.checkOut || "Fechas pendientes"}</div>
           </div>
         </div>
         <div style={{ display:"flex", gap:8, alignItems:"center" }}>
@@ -389,17 +413,29 @@ function PinPad({ onSuccess, users }) {
   };
   const KEYS = ["1","2","3","4","5","6","7","8","9","","0","X"];
   return (
-    <div style={{ minHeight:"100vh", background:"linear-gradient(145deg,#0F1117,#1A1D27)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+    <div style={{ minHeight:"100vh", background:"linear-gradient(145deg,#0D0F0A,#143B31)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <div style={{ width:300, textAlign:"center" }}>
         <div style={{ marginBottom:28 }}>
-          <div style={{ width:68, height:68, borderRadius:"50%", background:"linear-gradient(135deg,#D97706,#F59E0B)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 12px", boxShadow:"0 6px 24px #F59E0B50" }}>🐾</div>
-          <div style={{ color:"white", fontFamily:"Georgia,serif", fontWeight:900, fontSize:24 }}>Paw Park</div>
-          <div style={{ color:"#F59E0B", fontSize:10, letterSpacing:"0.2em", fontWeight:700, marginTop:3 }}>EXPEDIENTE CANINO</div>
+          <div style={{ margin:"0 auto 16px", width:180 }}>
+            <svg viewBox="0 0 792 612" style={{ width:"100%", filter:"drop-shadow(0 4px 16px rgba(170,204,113,0.3))" }}>
+              <g>
+                <path fill="#AACC71" d="M107.96,258.59H73.75v110.77h23.91v-50.65h14.95c5.81,0,11.29-2.16,15.11-5.98c4.15-4.32,5.81-10.8,5.81-23.58c0-10.63-1-15.94-3.65-20.09C125.4,262.24,117.76,258.59,107.96,258.59z M107.96,295.96c-1.49,1.33-3.82,2.33-5.48,2.33h-4.82v-19.26h4.48c5.81,0,7.81,2.49,7.81,9.63C109.95,292.97,109.45,294.63,107.96,295.96z"/>
+                <path fill="#AACC71" d="M151.13,258.59l-15.61,110.77h23.08l2.16-15.78h12.79l1.33,15.78h23.58l-15.45-110.77H151.13z M162.59,332.66l1-11.29c0.5-6.48,1-12.79,1.66-19.26c0.17-2.32,0.67-9.13,1.16-16.77l0.66-9.8l3.49,46l0.83,11.13H162.59z"/>
+                <path fill="#AACC71" d="M265.88,291.14c-0.66,6.48-1.16,12.12-1.49,16.94l-1.16,14.95c0,0.66-0.17,2.82-0.5,6.14l-0.33-3.65c-0.16-1.33-0.33-4.15-0.66-8.3c-1.16-15.28-1.33-18.43-2.16-25.91l-3.49-32.72h-20.76l-3.82,34.05c-0.67,5.65-2.16,22.42-3.16,36.54l-0.5-5.15c0-1.66-0.33-4.48-0.5-8.64c-0.83-12.79-1-13.62-1.83-22.75l-3.32-34.05h-23.42l11.96,110.77h26.74l4.82-37.2c1.33-10.46,1.99-17.1,2.99-33.05c0.33,2.99,0.5,6.15,0.83,9.3c0.16,2.49,0.5,5.48,0.66,8.64c0.66,7.31,1.33,14.95,1.66,15.61l4.81,36.7H280l12.12-110.77h-22.75L265.88,291.14z"/>
+                <path fill="#AACC71" d="M468.38,258.59h-34.21v110.77h23.91v-50.65h14.95c5.81,0,11.29-2.16,15.11-5.98c4.15-4.32,5.81-10.8,5.81-23.58c0-10.63-1-15.94-3.65-20.09C485.82,262.24,478.18,258.59,468.38,258.59z M468.38,295.96c-1.49,1.33-3.82,2.33-5.48,2.33h-4.82v-19.26h4.48c5.81,0,7.81,2.49,7.81,9.63C470.38,292.97,469.88,294.63,468.38,295.96z"/>
+                <path fill="#AACC71" d="M511.56,258.59l-15.61,110.77h23.08l2.16-15.78h12.79l1.33,15.78h23.58l-15.45-110.77H511.56z M523.02,332.66l1-11.29c0.5-6.48,1-12.79,1.66-19.26c0.17-2.32,0.67-9.13,1.16-16.77l0.66-9.8l3.49,46l0.83,11.13H523.02z"/>
+                <path fill="#AACC71" d="M625.31,286.82c0-19.93-7.64-28.23-25.74-28.23h-34.05v110.77h23.75v-50.98c0.83-0.17,1.66-0.17,1.99-0.17c6.31,0,8.3,2.66,8.3,11.46v39.69h23.75v-40.19c0.17-11.13-2.49-16.28-9.3-17.77C622.32,309.41,625.31,303.1,625.31,286.82z M594.09,298.45h-4.82v-19.43h5.15c5.65,0,8.14,2.99,8.14,10.29C602.56,295.46,599.91,298.45,594.09,298.45z"/>
+                <path fill="#AACC71" d="M682.27,306.25l12.95-47.66h-23.58l-5.32,18.1c-1,2.99-1.83,6.15-2.82,9.3c-0.5,1.66-1.5,5.48-2.66,9.96c-0.5,1.83-1,3.65-1.33,5.48l0.16-42.85H636.1v110.77h23.58l-0.16-59.12l1.16,4.82c2.82,12.12,3.32,14.78,3.99,17.1l10.13,37.2h24.58L682.27,306.25z"/>
+                <path fill="rgba(170,204,113,0.6)" d="M304.49,362.53c0.02-2.57,1-4.86,2.3-6.97c1.12-1.81,1.25-2-0.28-3.63c-2.77-2.95-3.61-6.48-2.49-10.44c0.89-3.15,2.56-5.86,4.78-8.2c0.84-0.89,1.06-1.47,0.06-2.32c-0.54-0.46-0.99-1.05-1.4-1.63c-2.41-3.45-2.92-6.99-0.56-10.73c1.6-2.54,3.49-4.75,6.13-6.28c1.87-1.09,1.85-1.13,1.39-3.19c-0.28-1.26-0.3-2.53-0.2-3.81c0.13-1.68,0.03-1.8-1.69-1.45c-2.06,0.41-3.97,0.09-5.77-0.94c-3.36-1.91-4.37-5.07-2.79-8.59c1-2.22,2.49-4.08,4.16-5.82c1.61-1.68,1.61-1.68-0.07-3.15c-1.34-1.17-2.5-2.45-3.28-4.08c-1.2-2.48-1.22-4.97,0.1-7.37c2.74-5.02,6.96-8.03,12.64-8.88c1.61-0.24,3.18,0.14,4.68,0.75c0.36,0.15,0.71,0.38,1.01,0.64c1.1,0.94,1.41,2.34,0.8,3.44c-0.58,1.06-1.75,1.59-3.11,1.08c-1.58-0.59-3.05-0.77-4.64-0.11c-2.04,0.84-3.8,2.03-5.13,3.81c-2.36,3.17-0.62,7.08,3.36,7.53c0.71,0.08,1.44,0,2.15-0.01c0.64-0.01,1.28-0.07,1.91-0.01c1.21,0.12,2.1,0.76,2.54,1.91c0.45,1.19,0.02,2.19-0.81,3.06c-0.85,0.89-1.98,1.33-3.05,1.86c-3,1.49-5.5,3.55-7.26,6.43c-0.4,0.66-1.06,1.36-0.44,2.18c0.63,0.84,1.58,0.7,2.43,0.42c2.05-0.67,4.04-1.52,5.96-2.51c0.64-0.33,1.28-0.67,1.93-0.96c1.21-0.53,2.36-0.45,3.33,0.5c0.97,0.96,1.05,2.14,0.54,3.33c-0.44,1.02-1,2-1.55,2.97c-0.76,1.32-1.52,2.65-1.91,4.12c-0.75,2.79,1.03,4.79,3.9,4.43c1.49-0.19,2.67-0.95,3.69-2.04c1.67-1.78,2.76-3.9,3.75-6.09c0.57-1.26,1.52-2.09,2.96-2.04c1.39,0.04,2.41,0.75,3.05,1.99c0.15,0.28,0.27,0.58,0.41,0.87c0.22,0.43,0.42,0.86,0.68,1.26c2.69,4.14,8.95,4.04,11.5-0.18c1.24-2.06,0.63-4.95-1.43-6.38c-0.98-0.68-2.08-1.2-3.1-1.81c-1.24-0.74-2.19-1.72-1.92-3.29c0.26-1.55,1.46-2.26,2.87-2.52c1.9-0.35,3.79-0.69,5.44-1.74c1.41-0.89,3.02-1.77,2.85-3.79c-0.18-2.08-2.02-2.49-3.55-3.09c-0.73-0.29-1.55-0.35-2.33-0.54c-0.77-0.19-1.58-0.32-2.3-0.64c-1.55-0.69-2.26-2.1-1.87-3.47c0.4-1.39,1.71-2.26,3.35-2.11c0.87,0.08,1.73,0.31,2.59,0.47c2.05,0.37,3.99,0.08,5.77-1c2.1-1.27,2.22-2.69,0.16-4c-2.36-1.5-4.85-2.77-7.29-4.15c-0.62-0.35-1.29-0.66-1.84-1.1c-0.95-0.75-1.39-1.74-0.97-2.97c0.39-1.15,1.47-1.85,2.82-1.8c0.98,0.04,1.88,0.39,2.74,0.82c2.87,1.42,5.68,2.96,8.32,4.76c4.68,3.19,4.91,8.67,0.6,12.35c-1.66,1.42-1.66,1.42-0.91,3.49c1.5,4.14,0.27,7.8-3.56,10.71c-0.82,0.62-2.12,0.88-2.41,1.85c-0.31,1.02,0.94,1.72,1.33,2.68c1.96,4.85,1.52,8.98-2.43,12.68c-4.39,4.1-9.73,4.82-14.99,1.9c-0.9-0.5-1.74-1.14-2.56-1.76c-0.66-0.5-1.15-0.41-1.6,0.25c-0.04,0.07-0.1,0.13-0.14,0.19c-3.3,4.84-7.81,6.89-13.64,5.87c-1.09-0.19-2.06,0.19-2.99,0.66c-2.12,1.07-3.81,2.61-5.01,4.67c-1.37,2.34-1.16,4.13,0.76,6.04c0.69,0.69,1.5,1.22,2.4,1.55c3.23,1.2,4.22,4.43,0.34,6.81c-2.33,1.43-4.04,3.34-5.28,5.73c-0.49,0.94-0.79,1.92-0.95,2.95c-0.41,2.67,1.16,4.72,3.86,5.04c0.71,0.08,1.44,0.03,2.15,0.1c2.04,0.19,3.36,1.21,3.5,2.67c0.14,1.41-0.71,2.65-2.7,3.18c-3.1,0.82-4.53,3.1-5.55,5.79c-0.67,1.78-0.32,2.58,1.31,3.59c1.37,0.84,2.82,1.46,4.39,1.88c1.86,0.51,2.64,1.55,2.45,3c-0.19,1.4-1.47,2.67-3.06,2.48c-4.27-0.52-7.96-2.28-10.51-5.91C304.64,364.83,304.47,363.68,304.49,362.53z"/>
+              </g>
+            </svg>
+          </div>
+          <div style={{ color:"#F2EEDD", fontSize:11, letterSpacing:"0.25em", fontWeight:600, marginTop:4, opacity:0.7 }}>EXPEDIENTE CANINO DIGITAL</div>
         </div>
-        <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:22, padding:"28px 24px", border:"1px solid rgba(255,255,255,0.1)" }}>
+        <div style={{ background:"rgba(20,59,49,0.6)", borderRadius:22, padding:"28px 24px", border:"1px solid rgba(170,204,113,0.2)", backdropFilter:"blur(10px)" }}>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", letterSpacing:"0.15em", fontWeight:600, marginBottom:20 }}>INGRESA TU PIN</div>
           <div style={{ display:"flex", justifyContent:"center", gap:14, marginBottom:20, animation:shake?"shake 0.4s":"none" }}>
-            {[0,1,2,3].map(i => <div key={i} style={{ width:14, height:14, borderRadius:"50%", background:i<pin.length?"#F59E0B":"rgba(255,255,255,0.15)", transition:"all 0.15s", transform:i<pin.length?"scale(1.2)":"scale(1)" }} />)}
+            {[0,1,2,3].map(i => <div key={i} style={{ width:14, height:14, borderRadius:"50%", background:i<pin.length?"#AACC71":"rgba(255,255,255,0.15)", transition:"all 0.15s", transform:i<pin.length?"scale(1.2)":"scale(1)" }} />)}
           </div>
           {err && <div style={{ fontSize:12, color:"#EF4444", fontWeight:700, marginBottom:12 }}>{err}</div>}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
@@ -425,7 +461,7 @@ function UserMgr({ users, onSave, onClose, dark }) {
   const [list, setList] = useState(users.map(u => ({...u})));
   const [editing, setEditing] = useState(null);
   const [p1, setP1] = useState(""); const [p2, setP2] = useState(""); const [pe, setPe] = useState("");
-  const COLORS = ["#F59E0B","#EF4444","#8B5CF6","#10B981","#3B82F6","#EC4899","#F97316","#6B7280"];
+  const COLORS = ["#AACC71","#EF4444","#8B5CF6","#10B981","#3B82F6","#EC4899","#F97316","#6B7280"];
   const saveU = () => {
     if (p1) { if (p1.length!==4||!/^\d{4}$/.test(p1)) { setPe("PIN debe ser 4 digitos"); return; } if (p1!==p2) { setPe("PINs no coinciden"); return; } const dup=list.find(u=>u.id!==editing.id&&u.pin===p1); if(dup){setPe("PIN ya usado por "+dup.name);return;} editing.pin=p1; }
     setList(l => l.map(u => u.id===editing.id ? editing : u)); setEditing(null);
@@ -474,12 +510,12 @@ function UserMgr({ users, onSave, onClose, dark }) {
             <div style={{ fontSize:11, color:t.text3, marginTop:5 }}>{editing.pin?"Deja vacio para no cambiar.":"Sin PIN asignado aun."}</div>
             <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:12 }}>
               <button onClick={()=>setEditing(null)} style={{ padding:"7px 15px", borderRadius:9, border:"1.5px solid " + t.bord, background:t.surf, color:t.text2, fontWeight:600, cursor:"pointer", fontSize:12 }}>Cancelar</button>
-              <button onClick={saveU} style={{ padding:"7px 18px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#D97706,#F59E0B)", color:"white", fontWeight:700, cursor:"pointer", fontSize:12 }}>Guardar</button>
+              <button onClick={saveU} style={{ padding:"7px 18px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:700, cursor:"pointer", fontSize:12 }}>Guardar</button>
             </div>
           </div>
         )}
         <div style={{ display:"flex", justifyContent:"flex-end", marginTop:18 }}>
-          <button onClick={() => onSave(list)} style={{ padding:"10px 24px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#D97706,#F59E0B)", color:"white", fontWeight:700, cursor:"pointer", fontSize:13 }}>Guardar cambios</button>
+          <button onClick={() => onSave(list)} style={{ padding:"10px 24px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:700, cursor:"pointer", fontSize:13 }}>Guardar cambios</button>
         </div>
       </div>
     </div>
@@ -497,7 +533,7 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
   const setVac = (vid,f,val) => setDog(d => ({...d, vaccinations:{...d.vaccinations, [vid]:{...d.vaccinations[vid],[f]:val}}}));
   const miss = pmiss(dog);
   const ro = id => !isAdmin && !STAFF_EDITABLE.has(id);
-  const COLORS = ["#F59E0B","#EF4444","#8B5CF6","#10B981","#3B82F6","#EC4899","#F97316","#6B7280"];
+  const COLORS = ["#AACC71","#EF4444","#8B5CF6","#10B981","#3B82F6","#EC4899","#F97316","#6B7280"];
   const tabs = FORM_TABS.map(tb => tb.id==="responsivas" && isAdmin && miss.length>0 ? {...tb, badge:miss.length} : tb);
   const meals = [{key:"morning",label:"MANANA"},{key:"afternoon",label:"TARDE"},{key:"evening",label:"NOCHE"}];
   const stays = dog.hotelStays || [];
@@ -539,7 +575,7 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
               <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                 {AREAS.map(a => {
                   const active = (dog.areas||[]).includes(a);
-                  const AREA_COLORS = { Guarderia:"#22C55E", Hotel:"#3B82F6", Grooming:"#EC4899", Adiestramiento:"#8B5CF6", Daycare:"#F59E0B" };
+                  const AREA_COLORS = { Guarderia:"#22C55E", Hotel:"#3B82F6", Grooming:"#EC4899", Adiestramiento:"#8B5CF6", Daycare:"#AACC71" };
                   const ac = AREA_COLORS[a] || "#6B7280";
                   return (
                     <button key={a} onClick={() => { if (ro("perrito")) return; const cur = dog.areas||[]; set("areas", active ? cur.filter(x=>x!==a) : [...cur, a]); }}
@@ -694,7 +730,7 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
           <div style={{ display:"flex", flexDirection:"column", gap:15 }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
               <div><div style={{ fontWeight:800, fontSize:15, color:t.text }}>Historial de Hotel</div><div style={{ fontSize:12, color:t.text3, marginTop:1 }}>{stays.length} estancia{stays.length!==1?"s":""}</div></div>
-              {!showNS && <button onClick={() => setShowNS(true)} style={{ padding:"8px 16px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#D97706,#F59E0B)", color:"white", fontWeight:700, cursor:"pointer", fontSize:13 }}>+ Nueva estancia</button>}
+              {!showNS && <button onClick={() => setShowNS(true)} style={{ padding:"8px 16px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:700, cursor:"pointer", fontSize:13 }}>+ Nueva estancia</button>}
             </div>
             {showNS && (
               <div style={{ background:t.accBg, border:"1.5px solid " + t.acc + "40", borderRadius:13, padding:"15px 17px", display:"flex", flexDirection:"column", gap:11 }}>
@@ -704,7 +740,7 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
                 </div>
                 <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
                   <button onClick={()=>setShowNS(false)} style={{ padding:"7px 15px", borderRadius:9, border:"1.5px solid " + t.bord, background:t.surf, color:t.text2, fontWeight:600, cursor:"pointer", fontSize:12 }}>Cancelar</button>
-                  <button onClick={() => { set("hotelStays",[...stays,{id:mkId(),checkIn:ns.checkIn,checkOut:ns.checkOut,notes:"",incidents:[]}]); setNs({checkIn:"",checkOut:""}); setShowNS(false); }} style={{ padding:"7px 16px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#D97706,#F59E0B)", color:"white", fontWeight:700, cursor:"pointer", fontSize:12 }}>Crear</button>
+                  <button onClick={() => { set("hotelStays",[...stays,{id:mkId(),checkIn:ns.checkIn,checkOut:ns.checkOut,notes:"",incidents:[]}]); setNs({checkIn:"",checkOut:""}); setShowNS(false); }} style={{ padding:"7px 16px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:700, cursor:"pointer", fontSize:12 }}>Crear</button>
                 </div>
               </div>
             )}
@@ -726,7 +762,7 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
         <div style={{ display:"flex", gap:5, alignItems:"center" }}>{FORM_TABS.map(tb => <button key={tb.id} onClick={()=>setTab(tb.id)} title={tb.label} style={{ width:8, height:8, borderRadius:"50%", border:"none", background:tab===tb.id?t.acc:t.bord, cursor:"pointer", padding:0 }} />)}</div>
         <div style={{ display:"flex", gap:9 }}>
           <button onClick={onCancel} style={{ padding:"9px 22px", borderRadius:10, border:"1.5px solid " + t.bord, background:t.surf, color:t.text2, fontWeight:600, cursor:"pointer", fontSize:13 }}>Cancelar</button>
-          <button onClick={() => onSave(dog)} style={{ padding:"9px 24px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#D97706,#F59E0B)", color:"white", fontWeight:700, cursor:"pointer", fontSize:13, boxShadow:"0 4px 12px #D9770640" }}>Guardar expediente</button>
+          <button onClick={() => onSave(dog)} style={{ padding:"9px 24px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:700, cursor:"pointer", fontSize:13, boxShadow:"0 4px 12px #143B3140" }}>Guardar expediente</button>
         </div>
       </div>
     </div>
@@ -762,7 +798,7 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
                 {sv&&<span style={{ fontSize:10, fontWeight:700, color:sv.color, background:sv.bg, border:"1px solid "+sv.color+"30", borderRadius:99, padding:"2px 9px" }}>{"👁 Sup. "+sv.label}</span>}
                 {isAdmin&&miss.length>0&&<span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:800, border:"1px solid "+t.acc+"30" }}>Responsivas pendientes</span>}
                 {stays.length>0&&<span style={{ background:dark?"#1A2040":"#EFF6FF", color:"#3B82F6", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:700, border:"1px solid #BFDBFE" }}>{"🏨 "+stays.length+(totalInc>0?" - "+totalInc+" inc.":"")}</span>}
-                {(dog.areas||[]).map(a=>{const AC={Guarderia:"#22C55E",Hotel:"#3B82F6",Grooming:"#EC4899",Adiestramiento:"#8B5CF6",Daycare:"#F59E0B"};const ac=AC[a]||"#6B7280";return <span key={a} style={{ background:ac+"18", color:ac, border:"1px solid "+ac+"40", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:700 }}>{a}</span>;})}
+                {(dog.areas||[]).map(a=>{const AC={Guarderia:"#22C55E",Hotel:"#3B82F6",Grooming:"#EC4899",Adiestramiento:"#8B5CF6",Daycare:"#AACC71"};const ac=AC[a]||"#6B7280";return <span key={a} style={{ background:ac+"18", color:ac, border:"1px solid "+ac+"40", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:700 }}>{a}</span>;})}
               </div>
             </div>
           </div>
@@ -895,17 +931,25 @@ export default function PawPark() {
   return (
     <div style={{ minHeight:"100vh", background:t.bg, fontFamily:"'Nunito','Segoe UI',sans-serif", display:"flex", flexDirection:"column" }}>
       {/* Header */}
-      <header style={{ background:t.head, padding:"0 22px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 4px 16px #D9770640", position:"sticky", top:0, zIndex:100 }}>
+      <header style={{ background:t.head, padding:"0 22px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 4px 16px #143B3140", position:"sticky", top:0, zIndex:100 }}>
         <div style={{ display:"flex", alignItems:"center", gap:11, padding:"11px 0" }}>
-          <div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🐾</div>
-          <div>
-            <div style={{ color:"#FEF3C7", fontWeight:900, fontSize:19, letterSpacing:"-0.5px", lineHeight:1, fontFamily:"Georgia,serif" }}>Paw Park</div>
-            <div style={{ color:"#FDE68A", fontSize:9, letterSpacing:"0.2em", fontWeight:600 }}>EXPEDIENTE CANINO DIGITAL</div>
+          <div style={{ height:36, display:"flex", alignItems:"center" }}>
+            <svg viewBox="0 0 792 612" style={{ height:28, filter:"brightness(0) invert(1)" }}>
+              <g>
+                <path fill="white" d="M107.96,258.59H73.75v110.77h23.91v-50.65h14.95c5.81,0,11.29-2.16,15.11-5.98c4.15-4.32,5.81-10.8,5.81-23.58c0-10.63-1-15.94-3.65-20.09C125.4,262.24,117.76,258.59,107.96,258.59z M107.96,295.96c-1.49,1.33-3.82,2.33-5.48,2.33h-4.82v-19.26h4.48c5.81,0,7.81,2.49,7.81,9.63C109.95,292.97,109.45,294.63,107.96,295.96z"/>
+                <path fill="white" d="M151.13,258.59l-15.61,110.77h23.08l2.16-15.78h12.79l1.33,15.78h23.58l-15.45-110.77H151.13z M162.59,332.66l1-11.29c0.5-6.48,1-12.79,1.66-19.26c0.17-2.32,0.67-9.13,1.16-16.77l0.66-9.8l3.49,46l0.83,11.13H162.59z"/>
+                <path fill="white" d="M265.88,291.14c-0.66,6.48-1.16,12.12-1.49,16.94l-1.16,14.95c0,0.66-0.17,2.82-0.5,6.14l-0.33-3.65c-0.16-1.33-0.33-4.15-0.66-8.3c-1.16-15.28-1.33-18.43-2.16-25.91l-3.49-32.72h-20.76l-3.82,34.05c-0.67,5.65-2.16,22.42-3.16,36.54l-0.5-5.15c0-1.66-0.33-4.48-0.5-8.64c-0.83-12.79-1-13.62-1.83-22.75l-3.32-34.05h-23.42l11.96,110.77h26.74l4.82-37.2c1.33-10.46,1.99-17.1,2.99-33.05c0.33,2.99,0.5,6.15,0.83,9.3c0.16,2.49,0.5,5.48,0.66,8.64c0.66,7.31,1.33,14.95,1.66,15.61l4.81,36.7H280l12.12-110.77h-22.75L265.88,291.14z"/>
+                <path fill="white" d="M468.38,258.59h-34.21v110.77h23.91v-50.65h14.95c5.81,0,11.29-2.16,15.11-5.98c4.15-4.32,5.81-10.8,5.81-23.58c0-10.63-1-15.94-3.65-20.09C485.82,262.24,478.18,258.59,468.38,258.59z M468.38,295.96c-1.49,1.33-3.82,2.33-5.48,2.33h-4.82v-19.26h4.48c5.81,0,7.81,2.49,7.81,9.63C470.38,292.97,469.88,294.63,468.38,295.96z"/>
+                <path fill="white" d="M511.56,258.59l-15.61,110.77h23.08l2.16-15.78h12.79l1.33,15.78h23.58l-15.45-110.77H511.56z M523.02,332.66l1-11.29c0.5-6.48,1-12.79,1.66-19.26c0.17-2.32,0.67-9.13,1.16-16.77l0.66-9.8l3.49,46l0.83,11.13H523.02z"/>
+                <path fill="white" d="M625.31,286.82c0-19.93-7.64-28.23-25.74-28.23h-34.05v110.77h23.75v-50.98c0.83-0.17,1.66-0.17,1.99-0.17c6.31,0,8.3,2.66,8.3,11.46v39.69h23.75v-40.19c0.17-11.13-2.49-16.28-9.3-17.77C622.32,309.41,625.31,303.1,625.31,286.82z M594.09,298.45h-4.82v-19.43h5.15c5.65,0,8.14,2.99,8.14,10.29C602.56,295.46,599.91,298.45,594.09,298.45z"/>
+                <path fill="white" d="M682.27,306.25l12.95-47.66h-23.58l-5.32,18.1c-1,2.99-1.83,6.15-2.82,9.3c-0.5,1.66-1.5,5.48-2.66,9.96c-0.5,1.83-1,3.65-1.33,5.48l0.16-42.85H636.1v110.77h23.58l-0.16-59.12l1.16,4.82c2.82,12.12,3.32,14.78,3.99,17.1l10.13,37.2h24.58L682.27,306.25z"/>
+              </g>
+            </svg>
           </div>
         </div>
         <nav style={{ display:"flex", gap:3, alignItems:"center" }}>
           {[{id:"dashboard",label:"Panel"},{id:"list",label:"Expedientes"}].map(n => (
-            <button key={n.id} onClick={() => {setView(n.id);setSearch("");setFilter("all");}} style={{ padding:"7px 14px", borderRadius:9, border:"none", cursor:"pointer", background:view===n.id?"rgba(255,255,255,0.2)":"transparent", color:view===n.id?"white":"#FDE68A", fontWeight:700, fontSize:12, display:"flex", alignItems:"center", gap:5 }}>
+            <button key={n.id} onClick={() => {setView(n.id);setSearch("");setFilter("all");}} style={{ padding:"7px 14px", borderRadius:9, border:"none", cursor:"pointer", background:view===n.id?"rgba(255,255,255,0.2)":"transparent", color:view===n.id?"white":"#AACC71", fontWeight:700, fontSize:12, display:"flex", alignItems:"center", gap:5 }}>
               {n.label}
               {n.id==="dashboard" && (vacAlerts.length>0||incompleteCount>0) && <span style={{ background:"#EF4444", color:"white", borderRadius:99, padding:"1px 6px", fontSize:9, fontWeight:800 }}>{vacAlerts.length+incompleteCount}</span>}
             </button>
@@ -918,14 +962,14 @@ export default function PawPark() {
             <div style={{ width:26, height:26, borderRadius:"50%", background:currentUser.color||"#9CA3AF", display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontWeight:800, fontSize:11 }}>{currentUser.name.slice(0,2).toUpperCase()}</div>
             <span style={{ color:"white", fontWeight:700, fontSize:12 }}>{currentUser.name}</span>
             {isAdmin && <button onClick={() => setShowUM(true)} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:6, color:"white", fontSize:10, fontWeight:700, cursor:"pointer", padding:"2px 7px" }}>👥</button>}
-            <button onClick={logout} style={{ background:"rgba(255,255,255,0.12)", border:"none", borderRadius:6, color:"#FDE68A", fontSize:10, cursor:"pointer", padding:"2px 7px", fontWeight:700 }}>Salir</button>
+            <button onClick={logout} style={{ background:"rgba(255,255,255,0.12)", border:"none", borderRadius:6, color:"#AACC71", fontSize:10, cursor:"pointer", padding:"2px 7px", fontWeight:700 }}>Salir</button>
           </div>
         </nav>
       </header>
 
       {showUM && <UserMgr dark={dark} users={users} onSave={saveUsers} onClose={() => setShowUM(false)} />}
 
-      <main style={{ flex:1, padding:"20px 22px", maxWidth:1120, margin:"0 auto", width:"100%", boxSizing:"border-box" }}>
+      <main style={{ flex:1, padding:useIsPad()?"28px 32px":"20px 22px", maxWidth:1200, margin:"0 auto", width:"100%", boxSizing:"border-box" }}>
 
         {/* Dashboard */}
         {view === "dashboard" && (
@@ -937,8 +981,8 @@ export default function PawPark() {
               </div>
               {vacAlerts.length > 0 && <div style={{ textAlign:"right" }}><div style={{ fontSize:11, color:t.text3, marginBottom:5 }}>{vacAlerts.length} perrito{vacAlerts.length>1?"s":""} requieren atencion</div><button onClick={() => setView("list")} style={{ padding:"6px 14px", borderRadius:9, border:"1.5px solid " + t.acc, background:"transparent", color:t.acc, fontWeight:700, fontSize:12, cursor:"pointer" }}>Ver todos</button></div>}
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:11 }}>
-              {[{icon:"🐕",v:dogs.length,label:"Expedientes",c:t.acc},{icon:"✅",v:dogs.filter(d=>ovs(d)==="ok").length,label:"Vacunas al dia",c:"#22C55E"},{icon:"⚠",v:dogs.filter(d=>ovs(d)==="soon").length,label:"Por vencer",c:"#F59E0B"},{icon:"🚨",v:dogs.filter(d=>ovs(d)==="expired").length,label:"Vencidas",c:"#EF4444"},{icon:"🎓",v:dogs.filter(d=>d.care?.result==="apt").length,label:"Aptos guarderia",c:"#8B5CF6"}].map(s => (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:useIsPad()?16:11 }}>
+              {[{icon:"🐕",v:dogs.length,label:"Expedientes",c:t.acc},{icon:"✅",v:dogs.filter(d=>ovs(d)==="ok").length,label:"Vacunas al dia",c:"#22C55E"},{icon:"⚠",v:dogs.filter(d=>ovs(d)==="soon").length,label:"Por vencer",c:"#AACC71"},{icon:"🚨",v:dogs.filter(d=>ovs(d)==="expired").length,label:"Vencidas",c:"#EF4444"},{icon:"🎓",v:dogs.filter(d=>d.care?.result==="apt").length,label:"Aptos guarderia",c:"#8B5CF6"}].map(s => (
                 <Card key={s.label} dark={dark} style={{ border:"2px solid " + s.c + "20" }}>
                   <div style={{ fontSize:22, marginBottom:6 }}>{s.icon}</div>
                   <div style={{ fontSize:26, fontWeight:900, color:s.c, lineHeight:1, fontFamily:"Georgia,serif" }}>{s.v}</div>
@@ -1013,7 +1057,7 @@ export default function PawPark() {
               <Card dark={dark} style={{ textAlign:"center", padding:"46px 0" }}>
                 <div style={{ fontSize:46 }}>🐕</div>
                 <div style={{ fontWeight:700, fontSize:15, marginTop:9, color:t.text }}>{dogs.length===0 ? "Sin expedientes aun" : "Sin resultados"}</div>
-                {dogs.length===0 && isAdmin && <button onClick={() => {setEditDog(null);setView("form");}} style={{ marginTop:13, padding:"9px 22px", borderRadius:11, border:"none", background:"linear-gradient(135deg,#D97706,#F59E0B)", color:"white", fontWeight:700, cursor:"pointer", fontSize:13 }}>Crear primer expediente</button>}
+                {dogs.length===0 && isAdmin && <button onClick={() => {setEditDog(null);setView("form");}} style={{ marginTop:13, padding:"9px 22px", borderRadius:11, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:700, cursor:"pointer", fontSize:13 }}>Crear primer expediente</button>}
               </Card>
             ) : (
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:13 }}>
@@ -1038,7 +1082,7 @@ export default function PawPark() {
                       <div style={{ fontSize:11, color:t.text2, marginBottom:7 }}>{dog.owner}</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8 }}>
                         {expC>0&&<span style={{ background:"#FEF2F2",color:"#EF4444",borderRadius:7,padding:"2px 7px",fontSize:10,fontWeight:700 }}>{"🚨 "+expC}</span>}
-                        {soonC>0&&<span style={{ background:"#FFFBEB",color:"#F59E0B",borderRadius:7,padding:"2px 7px",fontSize:10,fontWeight:700 }}>{"⚠ "+soonC}</span>}
+                        {soonC>0&&<span style={{ background:"#E8F0DC",color:"#AACC71",borderRadius:7,padding:"2px 7px",fontSize:10,fontWeight:700 }}>{"⚠ "+soonC}</span>}
                         {okC>0&&<span style={{ background:"#F0FDF4",color:"#22C55E",borderRadius:7,padding:"2px 7px",fontSize:10,fontWeight:700 }}>{"✅ "+okC}</span>}
                         {totalInc>0&&<span style={{ background:"#FEF2F2",color:"#DC2626",borderRadius:7,padding:"2px 7px",fontSize:10,fontWeight:700 }}>{"🚨 "+totalInc+" inc."}</span>}
                       </div>
@@ -1048,7 +1092,7 @@ export default function PawPark() {
                       </div>
                       {(dog.areas||[]).length > 0 && (
                         <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:7 }}>
-                          {(dog.areas||[]).map(a => { const AC = { Guarderia:"#22C55E", Hotel:"#3B82F6", Grooming:"#EC4899", Adiestramiento:"#8B5CF6", Daycare:"#F59E0B" }; const ac = AC[a]||"#6B7280"; return <span key={a} style={{ background:ac+"18", color:ac, border:"1px solid "+ac+"40", borderRadius:99, padding:"1px 8px", fontSize:10, fontWeight:700 }}>{a}</span>; })}
+                          {(dog.areas||[]).map(a => { const AC = { Guarderia:"#22C55E", Hotel:"#3B82F6", Grooming:"#EC4899", Adiestramiento:"#8B5CF6", Daycare:"#AACC71" }; const ac = AC[a]||"#6B7280"; return <span key={a} style={{ background:ac+"18", color:ac, border:"1px solid "+ac+"40", borderRadius:99, padding:"1px 8px", fontSize:10, fontWeight:700 }}>{a}</span>; })}
                         </div>
                       )}
                     </Card>
@@ -1099,7 +1143,7 @@ export default function PawPark() {
                         {sv && <span style={{ fontSize:10, fontWeight:700, color:sv.color, background:sv.bg, border:"1px solid " + sv.color + "30", borderRadius:99, padding:"2px 9px" }}>{"👁 Sup. "+sv.label}</span>}
                         {isAdmin && miss.length>0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:800, border:"1px solid " + t.acc + "30" }}>Responsivas pendientes</span>}
                         {stays.length>0 && <span style={{ background:dark?"#1A2040":"#EFF6FF", color:"#3B82F6", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:700, border:"1px solid #BFDBFE" }}>{"🏨 "+stays.length+(totalInc>0?" - "+totalInc+" inc.":"")}</span>}
-                        {(dog.areas||[]).map(a => { const AC = { Guarderia:"#22C55E", Hotel:"#3B82F6", Grooming:"#EC4899", Adiestramiento:"#8B5CF6", Daycare:"#F59E0B" }; const ac = AC[a]||"#6B7280"; return <span key={a} style={{ background:ac+"18", color:ac, border:"1px solid "+ac+"40", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:700 }}>{a}</span>; })}
+                        {(dog.areas||[]).map(a => { const AC = { Guarderia:"#22C55E", Hotel:"#3B82F6", Grooming:"#EC4899", Adiestramiento:"#8B5CF6", Daycare:"#AACC71" }; const ac = AC[a]||"#6B7280"; return <span key={a} style={{ background:ac+"18", color:ac, border:"1px solid "+ac+"40", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:700 }}>{a}</span>; })}
                       </div>
                     </div>
                   </div>
