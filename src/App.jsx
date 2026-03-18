@@ -7,11 +7,12 @@ import { collection, doc, setDoc, deleteDoc, onSnapshot, getDocs } from "firebas
 
 // ---- Responsive hook --------------------------------------------------------
 function useIsPad() {
-  const [isPad, setIsPad] = useState(() => window.innerWidth >= 768);
+  const [isPad, setIsPad] = useState(false);
   useEffect(() => {
-    const fn = () => setIsPad(window.innerWidth >= 768);
-    window.addEventListener("resize", fn);
-    return () => window.removeEventListener("resize", fn);
+    const check = () => setIsPad(window.innerWidth >= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
   }, []);
   return isPad;
 }
