@@ -315,19 +315,43 @@ function PdfUpload({ label, value, onChange, dark }) {
 
 
 // ---- iOS Date Picker --------------------------------------------------------
+function Drum({ items, selected, onSelect, width=70, t, pad }) {
+  const ref = useRef();
+  const ITEM_H = 44;
+  const idx = items.findIndex(i => String(i) === String(selected));
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = Math.max(0, idx) * ITEM_H;
+  }, [idx]);
+  return (
+    <div style={{ width, overflow:"hidden", position:"relative", height:ITEM_H*5 }}>
+      <div style={{ position:"absolute", top:"40%", left:0, right:0, height:ITEM_H, background:t.acc+"22", borderRadius:8, pointerEvents:"none", zIndex:1 }}/>
+      <div ref={ref} onScroll={e => {
+        const i = Math.round(e.target.scrollTop / ITEM_H);
+        if (items[i] !== undefined) onSelect(items[i]);
+      }} style={{ height:"100%", overflowY:"scroll", scrollSnapType:"y mandatory", paddingTop:ITEM_H*2, paddingBottom:ITEM_H*2, WebkitOverflowScrolling:"touch" }}>
+        {items.map((item, i) => (
+          <div key={i} onClick={() => { onSelect(item); ref.current.scrollTo({top: i*ITEM_H, behavior:"smooth"}); }}
+            style={{ height:ITEM_H, display:"flex", alignItems:"center", justifyContent:"center", scrollSnapAlign:"center", fontSize:pad?17:15, fontWeight:String(item)===String(selected)?800:400, color:String(item)===String(selected)?t.accD:t.text2, cursor:"pointer", transition:"all 0.1s" }}>
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DatePicker({ value, onChange, label, dark }) {
   const t = getT(dark);
   const pad = isPad();
   const [open, setOpen] = useState(false);
+  const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({length: 30}, (_, i) => currentYear - i);
 
   const parsed = value ? new Date(value + "T12:00:00") : new Date(2020, 0, 1);
   const [selYear, setSelYear] = useState(parsed.getFullYear());
   const [selMonth, setSelMonth] = useState(parsed.getMonth());
   const [selDay, setSelDay] = useState(parsed.getDate());
-
-  const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({length: 30}, (_, i) => currentYear - i);
   const days = Array.from({length: new Date(selYear, selMonth+1, 0).getDate()}, (_, i) => i+1);
 
   const confirm = () => {
@@ -337,38 +361,20 @@ function DatePicker({ value, onChange, label, dark }) {
     setOpen(false);
   };
 
-  const display = value ? new Date(value+"T12:00:00").toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"}) : "Seleccionar...";
-
-  const Drum = ({ items, selected, onSelect, width=70 }) => {
-    const ref = useRef();
-    const ITEM_H = 44;
-    const idx = items.findIndex(i => String(i) === String(selected));
-    useEffect(() => {
-      if (ref.current) ref.current.scrollTop = Math.max(0, idx) * ITEM_H;
-    }, [open]);
-    return (
-      <div style={{ width, overflow:"hidden", position:"relative", height:ITEM_H*5 }}>
-        <div style={{ position:"absolute", top:"40%", left:0, right:0, height:ITEM_H, background:t.acc+"22", borderRadius:8, pointerEvents:"none", zIndex:1 }}/>
-        <div ref={ref} onScroll={e => {
-          const i = Math.round(e.target.scrollTop / ITEM_H);
-          if (items[i] !== undefined) onSelect(items[i]);
-        }} style={{ height:"100%", overflowY:"scroll", scrollSnapType:"y mandatory", paddingTop:ITEM_H*2, paddingBottom:ITEM_H*2, WebkitOverflowScrolling:"touch" }}>
-          {items.map((item, i) => (
-            <div key={i} onClick={() => { onSelect(item); ref.current.scrollTo({top: i*ITEM_H, behavior:"smooth"}); }}
-              style={{ height:ITEM_H, display:"flex", alignItems:"center", justifyContent:"center", scrollSnapAlign:"center", fontSize:pad?17:15, fontWeight:String(item)===String(selected)?800:400, color:String(item)===String(selected)?t.accD:t.text2, cursor:"pointer", transition:"all 0.1s" }}>
-              {item}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+  const openPicker = () => {
+    const p2 = value ? new Date(value+"T12:00:00") : new Date(2020,0,1);
+    setSelYear(p2.getFullYear());
+    setSelMonth(p2.getMonth());
+    setSelDay(p2.getDate());
+    setOpen(true);
   };
+
+  const display = value ? new Date(value+"T12:00:00").toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"}) : "Seleccionar...";
 
   return (
     <div>
       <Lbl dark={dark}>{label}</Lbl>
-      <button onClick={() => { setOpen(true); const p2 = value ? new Date(value+"T12:00:00") : new Date(2020,0,1); setSelYear(p2.getFullYear()); setSelMonth(p2.getMonth()); setSelDay(p2.getDate()); }}
-        style={{ ...{ width:"100%", padding:pad?"13px 16px":"10px 12px", borderRadius:pad?12:10, border:"1.5px solid "+t.bord, fontSize:pad?15:13, background:t.surf, outline:"none", color:value?t.text:t.text3, boxSizing:"border-box", textAlign:"left", cursor:"pointer", fontFamily:"inherit" } }}>
+      <button onClick={openPicker} style={{ width:"100%", padding:pad?"13px 16px":"10px 12px", borderRadius:pad?12:10, border:"1.5px solid "+t.bord, fontSize:pad?15:13, background:t.surf, outline:"none", color:value?t.text:t.text3, boxSizing:"border-box", textAlign:"left", cursor:"pointer", fontFamily:"inherit" }}>
         {display}
       </button>
       {open && (
@@ -380,9 +386,9 @@ function DatePicker({ value, onChange, label, dark }) {
               <button onClick={confirm} style={{ background:"none", border:"none", color:t.acc, fontSize:15, cursor:"pointer", fontWeight:800 }}>Listo</button>
             </div>
             <div style={{ display:"flex", justifyContent:"center", gap:8, padding:"10px 20px", alignItems:"center" }}>
-              <Drum items={days} selected={selDay} onSelect={setSelDay} width={60} />
-              <Drum items={MONTHS} selected={MONTHS[selMonth]} onSelect={v => setSelMonth(MONTHS.indexOf(v))} width={80} />
-              <Drum items={years} selected={selYear} onSelect={setSelYear} width={80} />
+              <Drum items={days} selected={selDay} onSelect={setSelDay} width={60} t={t} pad={pad} />
+              <Drum items={MONTHS} selected={MONTHS[selMonth]} onSelect={v => setSelMonth(MONTHS.indexOf(v))} width={80} t={t} pad={pad} />
+              <Drum items={years} selected={selYear} onSelect={setSelYear} width={80} t={t} pad={pad} />
             </div>
           </div>
         </div>
