@@ -83,6 +83,54 @@ function openWA(phone, msg) {
   const num = clean.startsWith("52") ? clean : "52" + clean;
   window.open("https://wa.me/" + num + "?text=" + encodeURIComponent(msg), "_blank");
 }
+// ---- Age & Birthday helpers -------------------------------------------------
+function calcAge(birthdate) {
+  if (!birthdate) return null;
+  const b = new Date(birthdate);
+  if (isNaN(b)) return null;
+  const today = new Date();
+  let years = today.getFullYear() - b.getFullYear();
+  const months = today.getMonth() - b.getMonth();
+  if (months < 0 || (months === 0 && today.getDate() < b.getDate())) years--;
+  if (years <= 0) {
+    let m = (today.getFullYear() - b.getFullYear()) * 12 + (today.getMonth() - b.getMonth());
+    if (today.getDate() < b.getDate()) m--;
+    if (m <= 0) return "Recien nacido";
+    return m === 1 ? "1 mes" : m + " meses";
+  }
+  return years === 1 ? "1 año" : years + " años";
+}
+
+function ageFromText(ageStr) {
+  // Convert "2 años" or "2" to a birthdate string
+  if (!ageStr) return "";
+  const num = parseInt(ageStr);
+  if (isNaN(num)) return "";
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - num);
+  return d.toISOString().slice(0, 10);
+}
+
+function upcomingBirthdays(dogs, days=31) {
+  const today = new Date();
+  const result = [];
+  for (const dog of dogs) {
+    if (!dog.birthdate) continue;
+    const b = new Date(dog.birthdate);
+    if (isNaN(b)) continue;
+    // Next birthday this year
+    const next = new Date(today.getFullYear(), b.getMonth(), b.getDate());
+    if (next < today) next.setFullYear(today.getFullYear() + 1);
+    const diff = Math.floor((next - today) / 864e5);
+    if (diff <= days) {
+      const age = today.getFullYear() - b.getFullYear() + (next.getFullYear() > today.getFullYear() ? 1 : 0);
+      result.push({ dog, diff, next, age });
+    }
+  }
+  return result.sort((a, b) => a.diff - b.diff);
+}
+
+
 
 // ---- Style helpers ----------------------------------------------------------
 function useT(dark) {
@@ -260,6 +308,84 @@ function PdfUpload({ label, value, onChange, dark }) {
         </div>
       ) : (
         <div style={{ textAlign:"center" }}><div style={{ fontSize:26, marginBottom:5 }}>📤</div><div style={{ fontWeight:700, fontSize:13, color:t.text3 }}>{label}</div><div style={{ fontSize:11, color:t.text3, opacity:.6 }}>PDF max. 4MB</div></div>
+      )}
+    </div>
+  );
+}
+
+
+// ---- iOS Date Picker --------------------------------------------------------
+function DatePicker({ value, onChange, label, dark }) {
+  const t = useT(dark);
+  const pad = useIsPad();
+  const [open, setOpen] = useState(false);
+
+  const parsed = value ? new Date(value + "T12:00:00") : new Date(2020, 0, 1);
+  const [selYear, setSelYear] = useState(parsed.getFullYear());
+  const [selMonth, setSelMonth] = useState(parsed.getMonth());
+  const [selDay, setSelDay] = useState(parsed.getDate());
+
+  const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({length: 30}, (_, i) => currentYear - i);
+  const days = Array.from({length: new Date(selYear, selMonth+1, 0).getDate()}, (_, i) => i+1);
+
+  const confirm = () => {
+    const d = String(selDay).padStart(2,"0");
+    const m = String(selMonth+1).padStart(2,"0");
+    onChange(`${selYear}-${m}-${d}`);
+    setOpen(false);
+  };
+
+  const display = value ? new Date(value+"T12:00:00").toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"}) : "Seleccionar...";
+
+  const Drum = ({ items, selected, onSelect, width=70 }) => {
+    const ref = React.useRef();
+    const ITEM_H = 44;
+    const idx = items.findIndex(i => String(i) === String(selected));
+    React.useEffect(() => {
+      if (ref.current) ref.current.scrollTop = Math.max(0, idx) * ITEM_H;
+    }, [open]);
+    return (
+      <div style={{ width, overflow:"hidden", position:"relative", height:ITEM_H*5 }}>
+        <div style={{ position:"absolute", top:"40%", left:0, right:0, height:ITEM_H, background:t.acc+"22", borderRadius:8, pointerEvents:"none", zIndex:1 }}/>
+        <div ref={ref} onScroll={e => {
+          const i = Math.round(e.target.scrollTop / ITEM_H);
+          if (items[i] !== undefined) onSelect(items[i]);
+        }} style={{ height:"100%", overflowY:"scroll", scrollSnapType:"y mandatory", paddingTop:ITEM_H*2, paddingBottom:ITEM_H*2, WebkitOverflowScrolling:"touch" }}>
+          {items.map((item, i) => (
+            <div key={i} onClick={() => { onSelect(item); ref.current.scrollTo({top: i*ITEM_H, behavior:"smooth"}); }}
+              style={{ height:ITEM_H, display:"flex", alignItems:"center", justifyContent:"center", scrollSnapAlign:"center", fontSize:pad?17:15, fontWeight:String(item)===String(selected)?800:400, color:String(item)===String(selected)?t.accD:t.text2, cursor:"pointer", transition:"all 0.1s" }}>
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <Lbl dark={dark}>{label}</Lbl>
+      <button onClick={() => { setOpen(true); const p2 = value ? new Date(value+"T12:00:00") : new Date(2020,0,1); setSelYear(p2.getFullYear()); setSelMonth(p2.getMonth()); setSelDay(p2.getDate()); }}
+        style={{ ...{ width:"100%", padding:pad?"13px 16px":"10px 12px", borderRadius:pad?12:10, border:"1.5px solid "+t.bord, fontSize:pad?15:13, background:t.surf, outline:"none", color:value?t.text:t.text3, boxSizing:"border-box", textAlign:"left", cursor:"pointer", fontFamily:"inherit" } }}>
+        {display}
+      </button>
+      {open && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:2000 }} onClick={() => setOpen(false)}>
+          <div style={{ background:t.surf, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:420, padding:"0 0 30px" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display:"flex", justifyContent:"space-between", padding:"16px 20px 8px", borderBottom:"1px solid "+t.bord }}>
+              <button onClick={() => setOpen(false)} style={{ background:"none", border:"none", color:t.text2, fontSize:15, cursor:"pointer", fontWeight:600 }}>Cancelar</button>
+              <div style={{ fontWeight:800, fontSize:15, color:t.text }}>{label}</div>
+              <button onClick={confirm} style={{ background:"none", border:"none", color:t.acc, fontSize:15, cursor:"pointer", fontWeight:800 }}>Listo</button>
+            </div>
+            <div style={{ display:"flex", justifyContent:"center", gap:8, padding:"10px 20px", alignItems:"center" }}>
+              <Drum items={days} selected={selDay} onSelect={setSelDay} width={60} />
+              <Drum items={MONTHS} selected={MONTHS[selMonth]} onSelect={v => setSelMonth(MONTHS.indexOf(v))} width={80} />
+              <Drum items={years} selected={selYear} onSelect={setSelYear} width={80} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -556,11 +682,22 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
               <Field dark={dark} label="NOMBRE" value={dog.name} onChange={ro("perrito")?null:v=>set("name",v)} placeholder="Max" />
               <Sel dark={dark} label="RAZA" options={BREEDS} value={dog.breed} onChange={ro("perrito")?null:v=>set("breed",v)} disabled={ro("perrito")} />
               <Radio dark={dark} label="SEXO" value={dog.sex} onChange={ro("perrito")?null:v=>set("sex",v)} options={[{value:"Macho",label:"Macho"},{value:"Hembra",label:"Hembra"}]} disabled={ro("perrito")} />
-              <Field dark={dark} label="EDAD" value={dog.age} onChange={ro("perrito")?null:v=>set("age",v)} placeholder="2 años" />
+              <div>
+                <Lbl dark={dark}>EDAD</Lbl>
+                {dog.birthdate
+                  ? <div style={{ padding:pad?"13px 16px":"10px 12px", borderRadius:pad?12:10, border:"1.5px solid "+t.bord, fontSize:pad?15:13, background:t.surf2, color:t.text, boxSizing:"border-box" }}>{calcAge(dog.birthdate)||"—"} <span style={{ fontSize:11, color:t.text3 }}>(calculado)</span></div>
+                  : <input value={dog.age||""} onChange={e=>{const v=e.target.value;set("age",v);if(/^\d+/.test(v)){const bd=ageFromText(v);if(bd)set("birthdate",bd);}}} placeholder="Ej: 3 (genera fecha)" disabled={ro("perrito")} style={inp(dark,ro("perrito"),pad)} />
+                }
+              </div>
               <Field dark={dark} label="PESO" value={dog.weight} onChange={ro("perrito")?null:v=>set("weight",v)} placeholder="12 kg" />
               <Field dark={dark} label="COLOR / SENAS" value={dog.color} onChange={ro("perrito")?null:v=>set("color",v)} placeholder="Dorado" />
             </div>
-            <Field dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate} onChange={ro("perrito")?null:v=>set("birthdate",v)} type="date" />
+            <div style={{ gridColumn:"1 / -1" }}>
+              {ro("perrito")
+                ? <Field dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate} disabled />
+                : <DatePicker dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate} onChange={v=>set("birthdate",v)} />
+              }
+            </div>
             <Radio dark={dark} label="ESTERILIZADO?" value={dog.sterilized} onChange={ro("perrito")?null:v=>set("sterilized",v)} options={[{value:"Si",label:"Si"},{value:"No",label:"No"}]} disabled={ro("perrito")} />
             {dog.sex==="Hembra" && dog.sterilized==="No" && <Field dark={dark} label="ULTIMO CELO" value={dog.lastCelo} onChange={ro("perrito")?null:v=>set("lastCelo",v)} type="date" />}
             <div>
@@ -803,7 +940,7 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
         </div>
         <TabBar tabs={dtabs} active={dTab} onChange={setDTab} dark={dark} />
         <div style={{ marginTop:16 }}>
-          {dTab==="perfil"&&<div style={{ display:"flex", flexDirection:"column", gap:10 }}><IGrid cols={3}><IRow dark={dark} label="NOMBRE" value={dog.name}/><IRow dark={dark} label="RAZA" value={dog.breed}/><IRow dark={dark} label="SEXO" value={dog.sex}/><IRow dark={dark} label="EDAD" value={dog.age}/><IRow dark={dark} label="PESO" value={dog.weight}/><IRow dark={dark} label="COLOR" value={dog.color}/><IRow dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate}/><IRow dark={dark} label="ESTERILIZADO" value={yn(dog.sterilized)}/>{dog.lastCelo&&<IRow dark={dark} label="ULTIMO CELO" value={dog.lastCelo}/>}</IGrid><IGrid cols={2}><IRow dark={dark} label="TUTOR" value={dog.owner}/><IRow dark={dark} label="TEL" value={dog.phone}/></IGrid>{dog.authorizedPeople&&<IRow dark={dark} label="PERSONAS AUTORIZADAS" value={dog.authorizedPeople}/>}<IGrid cols={2}><IRow dark={dark} label="VET. EMERGENCIAS" value={dog.emergencyVet}/><IRow dark={dark} label="TEL. VET." value={dog.emergencyVetPhone}/></IGrid></div>}
+          {dTab==="perfil"&&<div style={{ display:"flex", flexDirection:"column", gap:10 }}><IGrid cols={3}><IRow dark={dark} label="NOMBRE" value={dog.name}/><IRow dark={dark} label="RAZA" value={dog.breed}/><IRow dark={dark} label="SEXO" value={dog.sex}/><IRow dark={dark} label="EDAD" value={dog.age}/><IRow dark={dark} label="PESO" value={dog.weight}/><IRow dark={dark} label="COLOR" value={dog.color}/><IRow dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate ? dog.birthdate + (calcAge(dog.birthdate) ? "  (" + calcAge(dog.birthdate) + ")" : "") : null}/><IRow dark={dark} label="ESTERILIZADO" value={yn(dog.sterilized)}/>{dog.lastCelo&&<IRow dark={dark} label="ULTIMO CELO" value={dog.lastCelo}/>}</IGrid><IGrid cols={2}><IRow dark={dark} label="TUTOR" value={dog.owner}/><IRow dark={dark} label="TEL" value={dog.phone}/></IGrid>{dog.authorizedPeople&&<IRow dark={dark} label="PERSONAS AUTORIZADAS" value={dog.authorizedPeople}/>}<IGrid cols={2}><IRow dark={dark} label="VET. EMERGENCIAS" value={dog.emergencyVet}/><IRow dark={dark} label="TEL. VET." value={dog.emergencyVetPhone}/></IGrid></div>}
           {dTab==="salud"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="ALERGIAS" value={dog.allergies}/><IRow dark={dark} label="CONDICIONES MEDICAS" value={dog.medicalConditions}/><IRow dark={dark} label="MEDICAMENTOS" value={dog.medications}/><IRow dark={dark} label="DOSIS Y FRECUENCIA" value={dog.dosage}/></div>}
           {dTab==="alimentacion"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={2}><IRow dark={dark} label="PRODUCTO" value={dog.foodProduct}/><IRow dark={dark} label="MEDIDA" value={dog.foodMeasure}/></IGrid>{meals.filter(m=>dog[m.key+"Time"]||dog[m.key+"Amount"]).map(m=><div key={m.key} style={{ display:"flex",alignItems:"center",gap:9,padding:"8px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span style={{ fontWeight:700,fontSize:12,color:t.accD,width:55 }}>{m.label}</span>{dog[m.key+"Time"]&&<span style={{ fontSize:12,color:t.text }}>{dog[m.key+"Time"]}</span>}{dog[m.key+"Amount"]&&<span style={{ fontSize:12,color:t.text,marginLeft:7 }}>{dog[m.key+"Amount"]}</span>}</div>)}<IRow dark={dark} label="NOTAS" value={dog.extraFoodNotes}/><IRow dark={dark} label="PREMIOS" value={treats(dog.treatsAllowed)}/>{dog.treatsAllowed==="tutor"&&<IRow dark={dark} label="PREMIOS DEL TUTOR" value={dog.tutorTreats}/>}</div>}
           {dTab==="comportamiento"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="CON LAS PERSONAS" value={dog.relationWithPeople}/><IRow dark={dark} label="MIEDOS" value={dog.fearsPhobias}/><IRow dark={dark} label="MANEJO ESPECIAL" value={dog.handlingInstructions}/><IRow dark={dark} label="AUTH. VET. EMERGENCIA" value={yn(dog.vetEmergencyAuth)}/></div>}
@@ -995,6 +1132,38 @@ export default function PawPark() {
                 </div>
               </Card>
             )}
+            {/* Birthday panel */}
+            {(() => {
+              const bdays = upcomingBirthdays(dogs, 31);
+              if (bdays.length === 0) return null;
+              return (
+                <Card dark={dark} style={{ border:"2px solid #F982C830" }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                    <div style={{ fontWeight:800, fontSize:14, color:t.text }}>🎂 Cumpleaños proximos</div>
+                    <span style={{ background:"#F982C820", color:"#F982C8", borderRadius:99, padding:"2px 11px", fontSize:12, fontWeight:700, border:"1px solid #F982C840" }}>{bdays.length} este mes</span>
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                    {bdays.map(({dog, diff, next, age}) => (
+                      <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 13px", borderRadius:12, background:diff===0?"#F982C815":t.surf2, border:"1px solid "+(diff===0?"#F982C850":t.bord), cursor:"pointer", transition:"all 0.15s" }}
+                        onMouseEnter={e=>e.currentTarget.style.transform="translateX(4px)"}
+                        onMouseLeave={e=>e.currentTarget.style.transform="translateX(0)"}>
+                        <DogAvatar dog={dog} size={38} />
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{dog.name} <span style={{ fontSize:11, color:t.text3 }}>cumple {age} años</span></div>
+                          <div style={{ fontSize:11, color:t.text2 }}>{dog.owner}</div>
+                        </div>
+                        <div style={{ textAlign:"right" }}>
+                          {diff === 0
+                            ? <span style={{ background:"#F982C8", color:"white", borderRadius:99, padding:"3px 10px", fontSize:11, fontWeight:800 }}>Hoy!</span>
+                            : <span style={{ background:diff<=7?"#F982C820":t.surf2, color:diff<=7?"#F982C8":t.text3, borderRadius:99, padding:"3px 10px", fontSize:11, fontWeight:700, border:"1px solid "+(diff<=7?"#F982C840":t.bord) }}>En {diff} dia{diff!==1?"s":""}</span>
+                          }
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              );
+            })()}
             <Card dark={dark}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
                 <div style={{ fontWeight:800, fontSize:14, color:t.text }}>Vacunas que necesitan atencion</div>
@@ -1148,7 +1317,7 @@ export default function PawPark() {
                 </div>
                 <TabBar tabs={dtabs} active={dTab} onChange={setDTab} dark={dark} />
                 <div style={{ marginTop:16 }}>
-                  {dTab==="perfil" && <div style={{ display:"flex", flexDirection:"column", gap:10 }}><IGrid cols={3}><IRow dark={dark} label="NOMBRE" value={dog.name}/><IRow dark={dark} label="RAZA" value={dog.breed}/><IRow dark={dark} label="SEXO" value={dog.sex}/><IRow dark={dark} label="EDAD" value={dog.age}/><IRow dark={dark} label="PESO" value={dog.weight}/><IRow dark={dark} label="COLOR" value={dog.color}/><IRow dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate}/><IRow dark={dark} label="ESTERILIZADO" value={yn(dog.sterilized)}/>{dog.lastCelo&&<IRow dark={dark} label="ULTIMO CELO" value={dog.lastCelo}/>}</IGrid><IGrid cols={2}><IRow dark={dark} label="TUTOR" value={dog.owner}/><IRow dark={dark} label="TEL" value={dog.phone}/></IGrid>{dog.authorizedPeople&&<IRow dark={dark} label="PERSONAS AUTORIZADAS" value={dog.authorizedPeople}/>}<IGrid cols={2}><IRow dark={dark} label="VET. EMERGENCIAS" value={dog.emergencyVet}/><IRow dark={dark} label="TEL. VET." value={dog.emergencyVetPhone}/></IGrid></div>}
+                  {dTab==="perfil" && <div style={{ display:"flex", flexDirection:"column", gap:10 }}><IGrid cols={3}><IRow dark={dark} label="NOMBRE" value={dog.name}/><IRow dark={dark} label="RAZA" value={dog.breed}/><IRow dark={dark} label="SEXO" value={dog.sex}/><IRow dark={dark} label="EDAD" value={dog.age}/><IRow dark={dark} label="PESO" value={dog.weight}/><IRow dark={dark} label="COLOR" value={dog.color}/><IRow dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate ? dog.birthdate + (calcAge(dog.birthdate) ? "  (" + calcAge(dog.birthdate) + ")" : "") : null}/><IRow dark={dark} label="ESTERILIZADO" value={yn(dog.sterilized)}/>{dog.lastCelo&&<IRow dark={dark} label="ULTIMO CELO" value={dog.lastCelo}/>}</IGrid><IGrid cols={2}><IRow dark={dark} label="TUTOR" value={dog.owner}/><IRow dark={dark} label="TEL" value={dog.phone}/></IGrid>{dog.authorizedPeople&&<IRow dark={dark} label="PERSONAS AUTORIZADAS" value={dog.authorizedPeople}/>}<IGrid cols={2}><IRow dark={dark} label="VET. EMERGENCIAS" value={dog.emergencyVet}/><IRow dark={dark} label="TEL. VET." value={dog.emergencyVetPhone}/></IGrid></div>}
                   {dTab==="salud" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="ALERGIAS" value={dog.allergies}/><IRow dark={dark} label="CONDICIONES MEDICAS" value={dog.medicalConditions}/><IRow dark={dark} label="MEDICAMENTOS" value={dog.medications}/><IRow dark={dark} label="DOSIS Y FRECUENCIA" value={dog.dosage}/></div>}
                   {dTab==="alimentacion" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={2}><IRow dark={dark} label="PRODUCTO" value={dog.foodProduct}/><IRow dark={dark} label="MEDIDA" value={dog.foodMeasure}/></IGrid>{meals.filter(m=>dog[m.key+"Time"]||dog[m.key+"Amount"]).map(m=><div key={m.key} style={{ display:"flex",alignItems:"center",gap:9,padding:"8px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span style={{ fontWeight:700,fontSize:12,color:t.accD,width:55 }}>{m.label}</span>{dog[m.key+"Time"]&&<span style={{ fontSize:12,color:t.text }}>{dog[m.key+"Time"]}</span>}{dog[m.key+"Amount"]&&<span style={{ fontSize:12,color:t.text,marginLeft:7 }}>{dog[m.key+"Amount"]}</span>}</div>)}<IRow dark={dark} label="NOTAS" value={dog.extraFoodNotes}/><IRow dark={dark} label="PREMIOS" value={treats(dog.treatsAllowed)}/>{dog.treatsAllowed==="tutor"&&<IRow dark={dark} label="PREMIOS DEL TUTOR" value={dog.tutorTreats}/>}</div>}
                   {dTab==="comportamiento" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="CON LAS PERSONAS" value={dog.relationWithPeople}/><IRow dark={dark} label="MIEDOS" value={dog.fearsPhobias}/><IRow dark={dark} label="MANEJO ESPECIAL" value={dog.handlingInstructions}/><IRow dark={dark} label="AUTH. VET. EMERGENCIA" value={yn(dog.vetEmergencyAuth)}/></div>}
