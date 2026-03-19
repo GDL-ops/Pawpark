@@ -340,10 +340,10 @@ function DatePicker({ value, onChange, label, dark }) {
   const display = value ? new Date(value+"T12:00:00").toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"}) : "Seleccionar...";
 
   const Drum = ({ items, selected, onSelect, width=70 }) => {
-    const ref = React.useRef();
+    const ref = useRef();
     const ITEM_H = 44;
     const idx = items.findIndex(i => String(i) === String(selected));
-    React.useEffect(() => {
+    useEffect(() => {
       if (ref.current) ref.current.scrollTop = Math.max(0, idx) * ITEM_H;
     }, [open]);
     return (
