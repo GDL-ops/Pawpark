@@ -6,7 +6,6 @@ import { collection, doc, setDoc, deleteDoc, onSnapshot, getDocs } from "firebas
 
 
 // ---- Responsive helper ------------------------------------------------------
-const isPad = () => typeof window !== "undefined" && window.innerWidth >= 768;
 
 // ---- Constants ---------------------------------------------------------------
 const VACCINES = [
@@ -182,8 +181,7 @@ function DogAvatar({ dog, size=44 }) {
 
 function Lbl({ children, dark }) {
   const t = getT(dark);
-  const pad = isPad();
-  return <label style={{ fontSize:pad?13:11, fontWeight:700, color:t.text3, letterSpacing:"0.06em", display:"block", marginBottom:pad?7:5 }}>{children}</label>;
+  return <label style={{ fontSize:11, fontWeight:700, color:t.text3, letterSpacing:"0.06em", display:"block", marginBottom:5 }}>{children}</label>;
 }
 
 function SecTitle({ children, dark }) {
@@ -197,55 +195,47 @@ function SecTitle({ children, dark }) {
 
 function IRow({ label, value, dark }) {
   const t = getT(dark);
-  const pad = isPad();
   if (!value && value !== 0) return null;
   return (
     <div>
-      <div style={{ fontSize:pad?11:9, fontWeight:800, color:t.text3, letterSpacing:"0.1em", marginBottom:pad?5:3 }}>{label}</div>
-      <div style={{ fontSize:pad?15:13, color:t.text, lineHeight:1.6, background:t.surf2, borderRadius:pad?12:10, padding:pad?"10px 15px":"7px 11px", border:"1px solid " + t.bord }}>{value}</div>
+      <div style={{ fontSize:9, fontWeight:800, color:t.text3, letterSpacing:"0.1em", marginBottom:3 }}>{label}</div>
+      <div style={{ fontSize:13, color:t.text, lineHeight:1.6, background:t.surf2, borderRadius:10, padding:"7px 11px", border:"1px solid " + t.bord }}>{value}</div>
     </div>
   );
 }
 
-function IGrid({ children, cols=2 }) { const pad = isPad(); return <div style={{ display:"grid", gridTemplateColumns:"repeat(" + cols + ",1fr)", gap:pad?14:10 }}>{children}</div>; }
+function IGrid({ children, cols=2 }) { return <div style={{ display:"grid", gridTemplateColumns:"repeat(" + cols + ",1fr)", gap:10 }}>{children}</div>; }
 
 function ROBanner({ dark }) {
   const t = getT(dark);
   return <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:10, background:t.surf2, border:"1px solid " + t.bord, marginBottom:8 }}><span>🔒</span><span style={{ fontSize:12, color:t.text2, fontWeight:600 }}>Solo el administrador puede editar esta seccion</span></div>;
 }
 
-function inp(dark, disabled, pad) {
+function inp(dark, disabled) {
   const t = getT(dark);
-  const p = pad ? "13px 16px" : "10px 12px";
-  const fs = pad ? 15 : 13;
-  const br = pad ? 12 : 10;
   return disabled
-    ? { width:"100%", padding:p, borderRadius:br, border:"1.5px solid "+t.bord, fontSize:fs, background:t.surf2, outline:"none", color:t.text3, boxSizing:"border-box", cursor:"not-allowed" }
-    : { width:"100%", padding:p, borderRadius:br, border:"1.5px solid "+t.bord, fontSize:fs, background:t.surf, outline:"none", color:t.text, boxSizing:"border-box" };
+    ? { width:"100%", padding:"10px 12px", borderRadius:10, border:"1.5px solid "+t.bord, fontSize:13, background:t.surf2, outline:"none", color:t.text3, boxSizing:"border-box", cursor:"not-allowed" }
+    : { width:"100%", padding:"10px 12px", borderRadius:10, border:"1.5px solid "+t.bord, fontSize:13, background:t.surf, outline:"none", color:t.text, boxSizing:"border-box" };
 }
 
 function Field({ label, value, onChange, placeholder, type="text", dark, disabled }) {
-  const pad = isPad();
-  return <div><Lbl dark={dark}>{label}</Lbl><input type={type} value={value||""} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} disabled={disabled||!onChange} style={inp(dark, disabled||!onChange, pad)} /></div>;
+  return <div><Lbl dark={dark}>{label}</Lbl><input type={type} value={value||""} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} disabled={disabled||!onChange} style={inp(dark, disabled||!onChange)} /></div>;
 }
 function TA({ label, value, onChange, placeholder, rows=3, dark, disabled }) {
-  const pad = isPad();
-  return <div><Lbl dark={dark}>{label}</Lbl><textarea value={value||""} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} rows={rows} disabled={disabled||!onChange} style={{ ...inp(dark, disabled||!onChange, pad), resize:"vertical", fontFamily:"inherit", lineHeight:1.55 }} /></div>;
+  return <div><Lbl dark={dark}>{label}</Lbl><textarea value={value||""} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} rows={rows} disabled={disabled||!onChange} style={{ ...inp(dark, disabled||!onChange), resize:"vertical", fontFamily:"inherit", lineHeight:1.55 }} /></div>;
 }
 function Sel({ label, options, value, onChange, dark, disabled }) {
-  const pad = isPad();
-  return <div><Lbl dark={dark}>{label}</Lbl><select value={value||""} onChange={e=>onChange&&onChange(e.target.value)} disabled={disabled||!onChange} style={{ ...inp(dark, disabled||!onChange, pad), cursor:disabled?"not-allowed":"pointer" }}><option value="">Seleccionar...</option>{options.map(o=><option key={o.value||o} value={o.value||o}>{o.label||o}</option>)}</select></div>;
+  return <div><Lbl dark={dark}>{label}</Lbl><select value={value||""} onChange={e=>onChange&&onChange(e.target.value)} disabled={disabled||!onChange} style={{ ...inp(dark, disabled||!onChange), cursor:disabled?"not-allowed":"pointer" }}><option value="">Seleccionar...</option>{options.map(o=><option key={o.value||o} value={o.value||o}>{o.label||o}</option>)}</select></div>;
 }
 function Radio({ label, value, onChange, options, dark, disabled }) {
   const t = getT(dark);
-  const pad = isPad();
   return (
     <div>
       <Lbl dark={dark}>{label}</Lbl>
-      <div style={{ display:"flex", gap:pad?10:8, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
         {options.map(o => (
-          <button key={o.value} onClick={() => onChange && !disabled && onChange(o.value)} style={{ padding:pad?"9px 20px":"7px 16px", borderRadius:pad?12:10, border:"1.5px solid " + (value===o.value ? t.acc : t.bord), background:value===o.value ? t.accBg : t.surf, color:value===o.value ? t.accD : t.text2, fontWeight:700, fontSize:pad?14:12.5, cursor:disabled?"default":"pointer", display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ width:pad?15:13, height:pad?15:13, borderRadius:"50%", border:"2px solid " + (value===o.value ? t.acc : t.bord), background:value===o.value ? t.acc : "transparent", display:"inline-block", flexShrink:0 }} />
+          <button key={o.value} onClick={() => onChange && !disabled && onChange(o.value)} style={{ padding:"7px 16px", borderRadius:10, border:"1.5px solid " + (value===o.value ? t.acc : t.bord), background:value===o.value ? t.accBg : t.surf, color:value===o.value ? t.accD : t.text2, fontWeight:700, fontSize:12.5, cursor:disabled?"default":"pointer", display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ width:13, height:13, borderRadius:"50%", border:"2px solid " + (value===o.value ? t.acc : t.bord), background:value===o.value ? t.acc : "transparent", display:"inline-block", flexShrink:0 }} />
             {o.label}
           </button>
         ))}
@@ -256,13 +246,12 @@ function Radio({ label, value, onChange, options, dark, disabled }) {
 
 function TabBar({ tabs, active, onChange, dark }) {
   const t = getT(dark);
-  const pad = isPad();
   return (
-    <div style={{ display:"flex", gap:pad?5:3, background:t.surf2, borderRadius:pad?14:12, padding:pad?6:4, overflowX:"auto", flexWrap:"wrap" }}>
+    <div style={{ display:"flex", gap:3, background:t.surf2, borderRadius:12, padding:4, overflowX:"auto", flexWrap:"wrap" }}>
       {tabs.map(tab => (
-        <button key={tab.id} onClick={() => onChange(tab.id)} style={{ flexShrink:0, padding:pad?"11px 18px":"8px 13px", borderRadius:pad?12:10, border:"none", whiteSpace:"nowrap", background:active===tab.id?t.surf:"transparent", color:active===tab.id?t.text:t.text3, fontWeight:700, fontSize:pad?14:12, cursor:"pointer", boxShadow:active===tab.id?"0 1px 6px #0000001A":"none", transition:"all 0.15s" }}>
+        <button key={tab.id} onClick={() => onChange(tab.id)} style={{ flexShrink:0, padding:"8px 13px", borderRadius:10, border:"none", whiteSpace:"nowrap", background:active===tab.id?t.surf:"transparent", color:active===tab.id?t.text:t.text3, fontWeight:700, fontSize:12, cursor:"pointer", boxShadow:active===tab.id?"0 1px 6px #0000001A":"none", transition:"all 0.15s" }}>
           {tab.label}
-          {tab.badge ? <span style={{ background:t.red, color:"white", borderRadius:99, padding:"0 5px", fontSize:pad?10:9, fontWeight:800, marginLeft:3 }}>{tab.badge}</span> : null}
+          {tab.badge ? <span style={{ background:t.red, color:"white", borderRadius:99, padding:"0 5px", fontSize:9, fontWeight:800, marginLeft:3 }}>{tab.badge}</span> : null}
         </button>
       ))}
     </div>
@@ -272,10 +261,9 @@ function TabBar({ tabs, active, onChange, dark }) {
 function Card({ children, style={}, onClick, dark }) {
   const t = getT(dark);
   const [hov, setHov] = useState(false);
-  const pad = isPad();
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background:t.surf, borderRadius:pad?22:18, border:"1.5px solid " + t.bord, padding:pad?"24px 28px":"18px 20px", boxShadow:hov&&onClick?"0 8px 24px #00000018":"0 2px 8px #0000000A", transition:"all 0.2s", cursor:onClick?"pointer":"default", transform:hov&&onClick?"translateY(-2px)":"translateY(0)", ...style }}>
+      style={{ background:t.surf, borderRadius:18, border:"1.5px solid " + t.bord, padding:"18px 20px", boxShadow:hov&&onClick?"0 8px 24px #00000018":"0 2px 8px #0000000A", transition:"all 0.2s", cursor:onClick?"pointer":"default", transform:hov&&onClick?"translateY(-2px)":"translateY(0)", ...style }}>
       {children}
     </div>
   );
@@ -314,85 +302,13 @@ function PdfUpload({ label, value, onChange, dark }) {
 }
 
 
-// ---- iOS Date Picker --------------------------------------------------------
-function Drum({ items, selected, onSelect, width=70, t, pad }) {
-  const ref = useRef();
-  const ITEM_H = 44;
-  const idx = items.findIndex(i => String(i) === String(selected));
-  useEffect(() => {
-    if (ref.current) ref.current.scrollTop = Math.max(0, idx) * ITEM_H;
-  }, [idx]);
-  return (
-    <div style={{ width, overflow:"hidden", position:"relative", height:ITEM_H*5 }}>
-      <div style={{ position:"absolute", top:"40%", left:0, right:0, height:ITEM_H, background:t.acc+"22", borderRadius:8, pointerEvents:"none", zIndex:1 }}/>
-      <div ref={ref} onScroll={e => {
-        const i = Math.round(e.target.scrollTop / ITEM_H);
-        if (items[i] !== undefined) onSelect(items[i]);
-      }} style={{ height:"100%", overflowY:"scroll", scrollSnapType:"y mandatory", paddingTop:ITEM_H*2, paddingBottom:ITEM_H*2, WebkitOverflowScrolling:"touch" }}>
-        {items.map((item, i) => (
-          <div key={i} onClick={() => { onSelect(item); ref.current.scrollTo({top: i*ITEM_H, behavior:"smooth"}); }}
-            style={{ height:ITEM_H, display:"flex", alignItems:"center", justifyContent:"center", scrollSnapAlign:"center", fontSize:pad?17:15, fontWeight:String(item)===String(selected)?800:400, color:String(item)===String(selected)?t.accD:t.text2, cursor:"pointer", transition:"all 0.1s" }}>
-            {item}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function DatePicker({ value, onChange, label, dark }) {
   const t = getT(dark);
-  const pad = isPad();
-  const [open, setOpen] = useState(false);
-  const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({length: 30}, (_, i) => currentYear - i);
-
-  const parsed = value ? new Date(value + "T12:00:00") : new Date(2020, 0, 1);
-  const [selYear, setSelYear] = useState(parsed.getFullYear());
-  const [selMonth, setSelMonth] = useState(parsed.getMonth());
-  const [selDay, setSelDay] = useState(parsed.getDate());
-  const days = Array.from({length: new Date(selYear, selMonth+1, 0).getDate()}, (_, i) => i+1);
-
-  const confirm = () => {
-    const d = String(selDay).padStart(2,"0");
-    const m = String(selMonth+1).padStart(2,"0");
-    onChange(`${selYear}-${m}-${d}`);
-    setOpen(false);
-  };
-
-  const openPicker = () => {
-    const p2 = value ? new Date(value+"T12:00:00") : new Date(2020,0,1);
-    setSelYear(p2.getFullYear());
-    setSelMonth(p2.getMonth());
-    setSelDay(p2.getDate());
-    setOpen(true);
-  };
-
-  const display = value ? new Date(value+"T12:00:00").toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"}) : "Seleccionar...";
-
   return (
     <div>
       <Lbl dark={dark}>{label}</Lbl>
-      <button onClick={openPicker} style={{ width:"100%", padding:pad?"13px 16px":"10px 12px", borderRadius:pad?12:10, border:"1.5px solid "+t.bord, fontSize:pad?15:13, background:t.surf, outline:"none", color:value?t.text:t.text3, boxSizing:"border-box", textAlign:"left", cursor:"pointer", fontFamily:"inherit" }}>
-        {display}
-      </button>
-      {open && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:2000 }} onClick={() => setOpen(false)}>
-          <div style={{ background:t.surf, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:420, padding:"0 0 30px" }} onClick={e => e.stopPropagation()}>
-            <div style={{ display:"flex", justifyContent:"space-between", padding:"16px 20px 8px", borderBottom:"1px solid "+t.bord }}>
-              <button onClick={() => setOpen(false)} style={{ background:"none", border:"none", color:t.text2, fontSize:15, cursor:"pointer", fontWeight:600 }}>Cancelar</button>
-              <div style={{ fontWeight:800, fontSize:15, color:t.text }}>{label}</div>
-              <button onClick={confirm} style={{ background:"none", border:"none", color:t.acc, fontSize:15, cursor:"pointer", fontWeight:800 }}>Listo</button>
-            </div>
-            <div style={{ display:"flex", justifyContent:"center", gap:8, padding:"10px 20px", alignItems:"center" }}>
-              <Drum items={days} selected={selDay} onSelect={setSelDay} width={60} t={t} pad={pad} />
-              <Drum items={MONTHS} selected={MONTHS[selMonth]} onSelect={v => setSelMonth(MONTHS.indexOf(v))} width={80} t={t} pad={pad} />
-              <Drum items={years} selected={selYear} onSelect={setSelYear} width={80} t={t} pad={pad} />
-            </div>
-          </div>
-        </div>
-      )}
+      <input type="date" value={value||""} onChange={e=>onChange(e.target.value)}
+        style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1.5px solid "+t.bord, fontSize:13, background:t.surf, outline:"none", color:value?t.text:t.text3, boxSizing:"border-box", fontFamily:"inherit", cursor:"pointer" }} />
     </div>
   );
 }
@@ -691,8 +607,8 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
               <div>
                 <Lbl dark={dark}>EDAD</Lbl>
                 {dog.birthdate
-                  ? <div style={{ padding:pad?"13px 16px":"10px 12px", borderRadius:pad?12:10, border:"1.5px solid "+t.bord, fontSize:pad?15:13, background:t.surf2, color:t.text, boxSizing:"border-box" }}>{calcAge(dog.birthdate)||"—"} <span style={{ fontSize:11, color:t.text3 }}>(calculado)</span></div>
-                  : <input value={dog.age||""} onChange={e=>{const v=e.target.value;set("age",v);if(/^\d+/.test(v)){const bd=ageFromText(v);if(bd)set("birthdate",bd);}}} placeholder="Ej: 3 (genera fecha)" disabled={ro("perrito")} style={inp(dark,ro("perrito"),pad)} />
+                  ? <div style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid "+t.bord, fontSize:13, background:t.surf2, color:t.text, boxSizing:"border-box" }}>{calcAge(dog.birthdate)||"—"} <span style={{ fontSize:11, color:t.text3 }}>(calculado)</span></div>
+                  : <input value={dog.age||""} onChange={e=>{const v=e.target.value;set("age",v);if(/^\d+/.test(v)){const bd=ageFromText(v);if(bd)set("birthdate",bd);}}} placeholder="Ej: 3 (genera fecha)" disabled={ro("perrito")} style={inp(dark,ro("perrito"))} />
                 }
               </div>
               <Field dark={dark} label="PESO" value={dog.weight} onChange={ro("perrito")?null:v=>set("weight",v)} placeholder="12 kg" />
