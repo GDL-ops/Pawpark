@@ -42,6 +42,7 @@ const SUPV = { bajo:{label:"BAJO",color:"#22C55E",bg:"#F0FDF4"}, medio:{label:"M
 const HOME_PANELS = [{id:"dashboard",label:"Panel General",icon:"📊"},{id:"hotel",label:"Hotel",icon:"🏨"},{id:"conducta",label:"Conducta",icon:"🎓"},{id:"grooming",label:"Grooming",icon:"✂"},{id:"guarderia",label:"Guarderia",icon:"🐾"}];
 const STAFF_EDITABLE = new Set(["alimentacion","cuidador","grooming","hotel","seguimiento"]);
 const DEFAULT_ADMIN = { id:"admin", name:"Admin", pin:"1234", isAdmin:true, homePanel:"dashboard", color:"#AACC71" };
+const DEFAULT_DAYCARE = { id:"daycare", name:"DAYCARE", pin:"5678", isAdmin:false, isDaycare:true, homePanel:"daycare", color:"#C1712C" };
 const AREAS = ["Guarderia","Hotel","Grooming","Adiestramiento","Day Pass Personalizado"];
 
 // ---- Helpers ----------------------------------------------------------------
@@ -82,6 +83,44 @@ function openWA(phone, msg) {
   const num = clean.startsWith("52") ? clean : "52" + clean;
   window.open("https://wa.me/" + num + "?text=" + encodeURIComponent(msg), "_blank");
 }
+// ---- Daycare Constants ------------------------------------------------------
+const DAYCARE_RANGES = [
+  { maxHrs: 4,  label: "4 hrs",  price: 125 },
+  { maxHrs: 6,  label: "6 hrs",  price: 150 },
+  { maxHrs: 8,  label: "8 hrs",  price: 190 },
+  { maxHrs: 10, label: "10 hrs", price: 225 },
+  { maxHrs: 12, label: "12 hrs", price: 275 },
+];
+
+function getDaycareRange(elapsedMs) {
+  const hrs = elapsedMs / 3600000;
+  for (const r of DAYCARE_RANGES) {
+    if (hrs <= r.maxHrs) return r;
+  }
+  return DAYCARE_RANGES[DAYCARE_RANGES.length - 1];
+}
+
+function getElapsed(session) {
+  if (!session) return 0;
+  const start = session.checkIn;
+  const pauseMs = (session.pauses || []).reduce((acc, p) => {
+    const s = p.start || 0;
+    const e = p.end || Date.now();
+    return acc + (e - s);
+  }, 0);
+  const end = session.checkOut || Date.now();
+  return Math.max(0, end - start - pauseMs);
+}
+
+function fmtElapsed(ms) {
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0");
+}
+
+
 // ---- Age & Birthday helpers -------------------------------------------------
 function calcAge(birthdate) {
   if (!birthdate) return null;
@@ -878,6 +917,332 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
   );
 }
 
+
+// ---- Public Daycare Display -------------------------------------------------
+function PublicDaycarePanel() {
+  const [sessions, setSessions] = useState([]);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "daycare_sessions"), snap => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(s => s.status === "active" || s.status === "paused")
+        .filter(s => {
+          // Only show sessions from today
+          const today = new Date().toDateString();
+          return new Date(s.checkIn).toDateString() === today;
+        })
+        .sort((a, b) => a.checkIn - b.checkIn);
+      setSessions(list);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(145deg,#0D1510,#143B31)", fontFamily:"'Nunito','Segoe UI',sans-serif", padding:"24px 20px" }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:28 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ width:42, height:42, borderRadius:"50%", background:"linear-gradient(135deg,#AACC71,#143B31)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>🐾</div>
+          <div>
+            <div style={{ color:"#F2EEDD", fontWeight:900, fontSize:20, letterSpacing:"-0.5px" }}>Paw Park</div>
+            <div style={{ color:"#AACC71", fontSize:10, letterSpacing:"0.2em", fontWeight:700 }}>GUARDERÍA EN VIVO</div>
+          </div>
+        </div>
+        <div style={{ color:"#AACC71", fontWeight:800, fontSize:18, fontFamily:"monospace" }}>
+          {new Date().toLocaleTimeString("es-MX")}
+        </div>
+      </div>
+
+      {sessions.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"80px 0", color:"rgba(242,238,221,0.4)" }}>
+          <div style={{ fontSize:60, marginBottom:16 }}>🐕</div>
+          <div style={{ fontSize:18, fontWeight:700 }}>Sin perritos activos por ahora</div>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:16 }}>
+          {sessions.map(s => {
+            const elapsed = getElapsed(s);
+            const range = getDaycareRange(elapsed);
+            const isPaused = s.status === "paused";
+            const isPackage = s.hasPackage;
+            const hrs = elapsed / 3600000;
+            const pct = Math.min(100, (hrs / range.maxHrs) * 100);
+            return (
+              <div key={s.id} style={{
+                borderRadius: 20,
+                background: isPaused ? "linear-gradient(145deg,#1A1A2E,#2D2D44)" : isPackage ? "linear-gradient(145deg,#2D1F00,#4A3500)" : "linear-gradient(145deg,#0D2018,#143B31)",
+                border: "2px solid " + (isPackage ? "#C1712C" : isPaused ? "#555" : "#AACC71") + "60",
+                padding: "20px 16px",
+                position: "relative",
+                overflow: "hidden"
+              }}>
+                {isPackage && <div style={{ position:"absolute", top:10, right:10, background:"linear-gradient(135deg,#C1712C,#F8D061)", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800, color:"white" }}>★ PAQUETE</div>}
+                {isPaused && <div style={{ position:"absolute", top:10, right:10, background:"rgba(255,255,255,0.15)", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800, color:"#aaa" }}>PAUSA</div>}
+                <div style={{ fontSize:15, fontWeight:800, color:"#F2EEDD", marginBottom:2 }}>{s.dogName}</div>
+                <div style={{ fontSize:11, color:"rgba(242,238,221,0.5)", marginBottom:14 }}>{s.ownerName}</div>
+                <div style={{ fontSize:42, fontWeight:900, color: isPaused ? "#888" : isPackage ? "#F8D061" : "#AACC71", fontFamily:"monospace", lineHeight:1, marginBottom:8 }}>
+                  {fmtElapsed(elapsed)}
+                </div>
+                <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:6, overflow:"hidden", marginBottom:8 }}>
+                  <div style={{ height:"100%", borderRadius:99, background: isPackage ? "linear-gradient(90deg,#C1712C,#F8D061)" : "linear-gradient(90deg,#143B31,#AACC71)", width:pct+"%", transition:"width 1s linear" }} />
+                </div>
+                <div style={{ fontSize:12, color:"rgba(242,238,221,0.6)", fontWeight:600 }}>{range.label} · ${range.price}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ---- Daycare Panel (staff view) ---------------------------------------------
+function DaycarePanel({ dark, currentUser, dogs }) {
+  const t = getT(dark);
+  const [sessions, setSessions] = useState([]);
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [tick, setTick] = useState(0);
+  const [tab, setTab] = useState("active"); // active | done
+
+  // Real-time sessions
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "daycare_sessions"), snap => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setSessions(list);
+    });
+    return () => unsub();
+  }, []);
+
+  // Timer tick
+  useEffect(() => {
+    const iv = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Autocomplete
+  useEffect(() => {
+    if (!query.trim() || query.length < 2) { setSuggestions([]); return; }
+    const q = query.toLowerCase();
+    const matches = dogs.filter(d =>
+      d.name?.toLowerCase().includes(q) || d.owner?.toLowerCase().includes(q)
+    ).slice(0, 6);
+    setSuggestions(matches);
+  }, [query, dogs]);
+
+  const todaySessions = sessions.filter(s => {
+    const today = new Date().toDateString();
+    return new Date(s.checkIn).toDateString() === today;
+  });
+  const active = todaySessions.filter(s => s.status === "active" || s.status === "paused").sort((a,b) => a.checkIn - b.checkIn);
+  const done = todaySessions.filter(s => s.status === "done").sort((a,b) => b.checkOut - a.checkOut);
+
+  const checkIn = async (dog) => {
+    // Check if already active today
+    const already = active.find(s => s.dogId === dog.id);
+    if (already) { alert(dog.name + " ya está en guardería"); setQuery(""); setSuggestions([]); return; }
+    const id = mkId();
+    const hasPackage = !!(dog.package?.active && dog.package?.remainingVisits > 0);
+    const packageHours = dog.package?.hoursPerVisit || 0;
+    await setDoc(doc(db, "daycare_sessions", id), {
+      id, dogId: dog.id, dogName: dog.name, ownerName: dog.owner || "",
+      checkIn: Date.now(), checkOut: null,
+      pauses: [], status: "active",
+      hasPackage, packageHours,
+      staffId: currentUser?.id || "", staffName: currentUser?.name || ""
+    });
+    // Decrement package visit if applicable
+    if (hasPackage && dog.package?.remainingVisits > 0) {
+      const updated = { ...dog, package: { ...dog.package, remainingVisits: dog.package.remainingVisits - 1, usedVisits: (dog.package.usedVisits || 0) + 1 } };
+      await setDoc(doc(db, "dogs", dog.id), updated);
+    }
+    setQuery(""); setSuggestions([]);
+  };
+
+  const pauseSession = async (s) => {
+    if (s.status === "paused") {
+      // Resume
+      const pauses = (s.pauses || []).map((p, i) =>
+        i === s.pauses.length - 1 && !p.end ? { ...p, end: Date.now() } : p
+      );
+      await setDoc(doc(db, "daycare_sessions", s.id), { ...s, pauses, status: "active" });
+    } else {
+      // Pause
+      const pauses = [...(s.pauses || []), { start: Date.now(), end: null }];
+      await setDoc(doc(db, "daycare_sessions", s.id), { ...s, pauses, status: "paused" });
+    }
+  };
+
+  const endSession = async (s) => {
+    if (!confirm("¿Finalizar la visita de " + s.dogName + "?")) return;
+    const checkOut = Date.now();
+    const pauses = (s.pauses || []).map(p => p.end ? p : { ...p, end: checkOut });
+    const elapsed = getElapsed({ ...s, checkOut, pauses });
+    const range = getDaycareRange(elapsed);
+    const updated = { ...s, checkOut, pauses, status: "done", totalMs: elapsed, rangeLabel: range.label, rangePrice: range.price };
+    await setDoc(doc(db, "daycare_sessions", s.id), updated);
+    // Save to dog history
+    const dog = dogs.find(d => d.id === s.dogId);
+    if (dog) {
+      const visit = { id: s.id, checkIn: s.checkIn, checkOut, durationMs: elapsed, rangeLabel: range.label, rangePrice: range.price, hasPackage: s.hasPackage };
+      const history = [...(dog.daycareHistory || []), visit];
+      await setDoc(doc(db, "dogs", dog.id), { ...dog, daycareHistory: history });
+    }
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:t.bg, fontFamily:"'Nunito','Segoe UI',sans-serif" }}>
+      {/* Header */}
+      <header style={{ background:t.head, padding:"12px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:32, height:32, borderRadius:"50%", background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🐾</div>
+          <div>
+            <div style={{ color:"#F2EEDD", fontWeight:900, fontSize:16 }}>Guardería</div>
+            <div style={{ color:"#AACC71", fontSize:9, letterSpacing:"0.15em", fontWeight:700 }}>EN VIVO</div>
+          </div>
+        </div>
+        <div style={{ color:"#AACC71", fontWeight:800, fontSize:14, fontFamily:"monospace" }}>
+          {new Date().toLocaleDateString("es-MX",{weekday:"short",day:"numeric",month:"short"})}
+        </div>
+      </header>
+
+      <div style={{ padding:"18px 16px", maxWidth:900, margin:"0 auto" }}>
+        {/* Search / Check-in */}
+        <div style={{ marginBottom:20, position:"relative" }}>
+          <div style={{ fontWeight:800, fontSize:13, color:t.text3, marginBottom:8, letterSpacing:"0.08em" }}>NUEVO INGRESO</div>
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Escribe nombre del perrito o del dueño..."
+            style={{ width:"100%", padding:"13px 16px", borderRadius:14, border:"2px solid "+t.acc+"60", fontSize:15, background:t.surf, color:t.text, outline:"none", boxSizing:"border-box", fontFamily:"inherit" }}
+          />
+          {suggestions.length > 0 && (
+            <div style={{ position:"absolute", top:"100%", left:0, right:0, background:t.surf, border:"1.5px solid "+t.bord, borderRadius:14, overflow:"hidden", zIndex:200, boxShadow:"0 8px 24px #00000020", marginTop:4 }}>
+              {suggestions.map(dog => {
+                const hasPackage = !!(dog.package?.active && dog.package?.remainingVisits > 0);
+                return (
+                  <div key={dog.id} onClick={() => checkIn(dog)}
+                    style={{ padding:"12px 16px", cursor:"pointer", borderBottom:"1px solid "+t.bord, display:"flex", alignItems:"center", gap:12, transition:"background 0.1s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = t.surf2}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <DogAvatar dog={dog} size={36} />
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}</div>
+                      <div style={{ fontSize:12, color:t.text2 }}>{dog.owner}{dog.phone ? " · " + dog.phone : ""}</div>
+                    </div>
+                    {hasPackage && (
+                      <span style={{ background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800 }}>★ Paquete</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+          {[{id:"active",label:"Activos ("+active.length+")"},{id:"done",label:"Finalizados hoy ("+done.length+")"}].map(tb => (
+            <button key={tb.id} onClick={() => setTab(tb.id)} style={{ padding:"8px 18px", borderRadius:10, border:"none", fontWeight:700, fontSize:13, cursor:"pointer", background:tab===tb.id?t.acc:t.surf2, color:tab===tb.id?t.accD:t.text2 }}>
+              {tb.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Active sessions */}
+        {tab === "active" && (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:14 }}>
+            {active.length === 0 && (
+              <div style={{ gridColumn:"1/-1", textAlign:"center", padding:"40px 0", color:t.text3 }}>
+                <div style={{ fontSize:40 }}>🐕</div>
+                <div style={{ fontWeight:700, marginTop:8 }}>Sin perritos activos</div>
+                <div style={{ fontSize:12, marginTop:4 }}>Usa la búsqueda de arriba para registrar un ingreso</div>
+              </div>
+            )}
+            {active.map(s => {
+              const elapsed = getElapsed(s);
+              const range = getDaycareRange(elapsed);
+              const isPaused = s.status === "paused";
+              const isGold = s.hasPackage;
+              const hrs = elapsed / 3600000;
+              const pct = Math.min(100, (hrs / range.maxHrs) * 100);
+              return (
+                <div key={s.id} style={{ borderRadius:18, background:t.surf, border:"2px solid "+(isGold?"#C1712C":isPaused?t.bord:t.acc)+"50", overflow:"hidden" }}>
+                  {/* Color bar */}
+                  <div style={{ height:5, background: isGold ? "linear-gradient(90deg,#C1712C,#F8D061)" : isPaused ? "#555" : "linear-gradient(90deg,#143B31,#AACC71)", width:pct+"%", transition:"width 1s linear" }} />
+                  <div style={{ padding:"14px 16px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                      <DogAvatar dog={{name:s.dogName, photoColor: isGold?"#C1712C":"#AACC71"}} size={40} />
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:800, fontSize:14, color:t.text, display:"flex", alignItems:"center", gap:6 }}>
+                          {s.dogName}
+                          {isGold && <span style={{ background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", borderRadius:99, padding:"1px 8px", fontSize:9, fontWeight:800 }}>★ PKG</span>}
+                        </div>
+                        <div style={{ fontSize:11, color:t.text2 }}>{s.ownerName}</div>
+                      </div>
+                      {isPaused && <span style={{ background:t.surf2, color:t.text3, borderRadius:99, padding:"2px 8px", fontSize:9, fontWeight:800 }}>PAUSA</span>}
+                    </div>
+                    {/* Timer */}
+                    <div style={{ fontFamily:"monospace", fontSize:34, fontWeight:900, color: isGold?"#C1712C":isPaused?"#888":t.acc, lineHeight:1, marginBottom:6 }}>
+                      {fmtElapsed(elapsed)}
+                    </div>
+                    <div style={{ fontSize:12, color:t.text2, marginBottom:12 }}>
+                      Rango: <strong>{range.label}</strong> · <strong style={{color:isGold?"#C1712C":t.acc}}>${range.price}</strong>
+                      {isGold && <span style={{ color:"#C1712C", marginLeft:6, fontSize:11 }}>· Paquete activo</span>}
+                    </div>
+                    {/* Buttons */}
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={() => pauseSession(s)} style={{ flex:1, padding:"9px", borderRadius:10, border:"1.5px solid "+t.bord, background:t.surf2, color:t.text2, fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                        {isPaused ? "▶ Reanudar" : "⏸ Pausar"}
+                      </button>
+                      <button onClick={() => endSession(s)} style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#35201E,#143B31)", color:"white", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                        ■ Finalizar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Done sessions */}
+        {tab === "done" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {done.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:t.text3 }}>Sin finalizados hoy</div>}
+            {done.map(s => {
+              const elapsed = getElapsed(s);
+              const range = getDaycareRange(elapsed);
+              const checkInTime = new Date(s.checkIn).toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+              const checkOutTime = new Date(s.checkOut).toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+              return (
+                <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderRadius:14, background:t.surf, border:"1px solid "+t.bord }}>
+                  <DogAvatar dog={{name:s.dogName, photoColor:"#888"}} size={36} />
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{s.dogName} <span style={{ color:t.text3, fontSize:11 }}>· {s.ownerName}</span></div>
+                    <div style={{ fontSize:11, color:t.text2 }}>{checkInTime} → {checkOutTime} · {fmtElapsed(elapsed)}</div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontWeight:800, color:s.hasPackage?"#C1712C":t.acc, fontSize:14 }}>${range.price}</div>
+                    {s.hasPackage && <div style={{ fontSize:9, color:"#C1712C", fontWeight:700 }}>PAQUETE</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---- Main App ---------------------------------------------------------------
 export default function PawPark() {
   const [dark, setDark] = useState(false);
@@ -913,6 +1278,7 @@ export default function PawPark() {
       } else {
         // Seed default admin on first run
         setDoc(doc(db, "users", DEFAULT_ADMIN.id), DEFAULT_ADMIN).catch(()=>{});
+          setDoc(doc(db, "users", DEFAULT_DAYCARE.id), DEFAULT_DAYCARE).catch(()=>{});
       }
     });
 
@@ -976,8 +1342,14 @@ export default function PawPark() {
     return true;
   });
 
+  // Public display URL - no login needed
+  if (typeof window !== "undefined" && window.location.pathname === "/pantalla") {
+    return <PublicDaycarePanel />;
+  }
+
   if (!loaded) return <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:t.bg, color:t.acc, fontSize:18 }}>Cargando Paw Park...</div>;
   if (!currentUser) return <PinPad users={users.filter(u=>u.pin)} onSuccess={login} />;
+  if (currentUser.isDaycare) return <DaycarePanel dark={dark} currentUser={currentUser} dogs={dogs} />;
 
   return (
     <div style={{ minHeight:"100vh", background:t.bg, fontFamily:"'Nunito','Segoe UI',sans-serif", display:"flex", flexDirection:"column" }}>
