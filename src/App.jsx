@@ -67,6 +67,8 @@ const defDog = () => ({
   areas:[],
   hotelStays:[],
   incidents:{ healthObservations:"", futureRecommendations:"" },
+  package: null,
+  daycareHistory: [],
 });
 
 function buildWAMsg(dog) {
@@ -83,6 +85,38 @@ function openWA(phone, msg) {
   const num = clean.startsWith("52") ? clean : "52" + clean;
   window.open("https://wa.me/" + num + "?text=" + encodeURIComponent(msg), "_blank");
 }
+
+// ---- Package Constants ------------------------------------------------------
+const PKG_VISITS = [4, 8, 12, 16];
+const PKG_HOURS  = [4, 6, 8, 10, 12];
+const PKG_PRICES = {
+  4:  { 4: 452,  6: 552,  8: 752,  10: 825,  12: 1008 },
+  8:  { 4: 910,  6: 1104, 8: 1394, 10: 1650, 12: 2016 },
+  12: { 4: 1354, 6: 1608, 8: 2026, 10: 2400, 12: 2933 },
+  16: { 4: 1805, 6: 2112, 8: 2660, 10: 3150, 12: 3850 },
+};
+
+function getPkgPrice(visits, hours) {
+  return PKG_PRICES[visits]?.[hours] || 0;
+}
+
+function pkgDaysLeft(pkg) {
+  if (!pkg?.startDate) return null;
+  const end = new Date(pkg.startDate);
+  end.setDate(end.getDate() + 31);
+  const diff = Math.ceil((end - new Date()) / 864e5);
+  return diff;
+}
+
+function pkgStatus(pkg) {
+  if (!pkg?.active) return "none";
+  const days = pkgDaysLeft(pkg);
+  if (days < 0) return "expired";
+  if (days <= 5) return "expiring";
+  if (pkg.remainingVisits <= 0) return "used";
+  return "active";
+}
+
 // ---- Daycare Constants ------------------------------------------------------
 const DAYCARE_RANGES = [
   { maxHrs: 4,  label: "4 hrs",  price: 125 },
@@ -602,7 +636,136 @@ function UserMgr({ users, onSave, onClose, dark }) {
 }
 
 // ---- Form Tab Sections ------------------------------------------------------
-const FORM_TABS = [{id:"perrito",label:"🐾 Perrito"},{id:"tutor",label:"👤 Tutor"},{id:"salud",label:"🏥 Salud"},{id:"alimentacion",label:"🍽 Aliment."},{id:"comportamiento",label:"🧠 Comport."},{id:"vacunas",label:"💉 Vacunas"},{id:"cuidador",label:"📋 Cuidador"},{id:"grooming",label:"✂ Grooming"},{id:"responsivas",label:"📄 Responsivas"},{id:"hotel",label:"🏨 Hotel"},{id:"seguimiento",label:"🚨 Seguimiento"}];
+
+// ---- New Package Form -------------------------------------------------------
+function NewPackageForm({ dark, dog, onSave }) {
+  const t = getT(dark);
+  const [visits, setVisits] = useState(dog.package?.visits || 4);
+  const [hours, setHours]   = useState(dog.package?.hoursPerVisit || 4);
+  const price = getPkgPrice(visits, hours);
+  const today = new Date().toISOString().slice(0,10);
+
+  const save = () => {
+    const start = new Date();
+    const end = new Date(start);
+    end.setDate(end.getDate() + 31);
+    onSave({
+      active: true,
+      visits,
+      hoursPerVisit: hours,
+      price,
+      startDate: start.toISOString().slice(0,10),
+      endDate: end.toISOString().slice(0,10),
+      remainingVisits: visits,
+      usedVisits: 0,
+    });
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+      <div>
+        <Lbl dark={dark}>VISITAS AL MES</Lbl>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {PKG_VISITS.map(v => (
+            <button key={v} onClick={() => setVisits(v)} style={{ padding:"8px 18px", borderRadius:10, border:"2px solid "+(visits===v?t.acc:t.bord), background:visits===v?t.accBg:t.surf, color:visits===v?t.accD:t.text2, fontWeight:700, fontSize:13, cursor:"pointer" }}>
+              {v}x <span style={{ fontSize:10, fontWeight:600, opacity:0.7 }}>({v===4?"1/sem":v===8?"2/sem":v===12?"3/sem":"4/sem"})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <Lbl dark={dark}>HORAS POR VISITA</Lbl>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {PKG_HOURS.map(h => (
+            <button key={h} onClick={() => setHours(h)} style={{ padding:"8px 18px", borderRadius:10, border:"2px solid "+(hours===h?t.acc:t.bord), background:hours===h?t.accBg:t.surf, color:hours===h?t.accD:t.text2, fontWeight:700, fontSize:13, cursor:"pointer" }}>
+              {h}h
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ padding:"12px 16px", borderRadius:12, background:t.accBg, border:"1px solid "+t.acc+"40", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div>
+          <div style={{ fontSize:11, color:t.accD, fontWeight:700 }}>PRECIO DEL PAQUETE</div>
+          <div style={{ fontSize:22, fontWeight:900, color:t.accD }}>${price.toLocaleString()} <span style={{ fontSize:12, fontWeight:600, opacity:0.7 }}>/ mes</span></div>
+        </div>
+        <div style={{ fontSize:11, color:t.text2, textAlign:"right" }}>
+          <div>{visits} visitas · {hours}h c/u</div>
+          <div>Vigencia: 31 días</div>
+        </div>
+      </div>
+      <button onClick={save} style={{ padding:"11px", borderRadius:12, border:"none", background:"linear-gradient(135deg,#35201E,#143B31)", color:"white", fontWeight:700, fontSize:14, cursor:"pointer" }}>
+        ✅ Activar paquete
+      </button>
+    </div>
+  );
+}
+
+
+// ---- Quick Package Activation from Daycare Panel ---------------------------
+function PkgQuickActivate({ dark, session, dogs }) {
+  const t = getT(dark);
+  const [open, setOpen] = useState(false);
+  const [visits, setVisits] = useState(4);
+  const [hours, setHours] = useState(4);
+  const price = getPkgPrice(visits, hours);
+
+  const activate = async () => {
+    const dog = dogs.find(d => d.id === session.dogId);
+    if (!dog) return;
+    const start = new Date();
+    const end = new Date(start);
+    end.setDate(end.getDate() + 31);
+    const pkg = {
+      active: true, visits, hoursPerVisit: hours, price,
+      startDate: start.toISOString().slice(0,10),
+      endDate: end.toISOString().slice(0,10),
+      remainingVisits: visits - 1, // already using 1 visit today
+      usedVisits: 1,
+    };
+    await setDoc(doc(db, "dogs", dog.id), { ...dog, package: pkg });
+    // Update session to reflect package
+    await setDoc(doc(db, "daycare_sessions", session.id), { ...session, hasPackage: true, packageHours: hours });
+    setOpen(false);
+  };
+
+  if (open) return (
+    <div style={{ marginTop:8, padding:"12px", borderRadius:12, background:t.accBg, border:"1px solid "+t.acc+"40" }}>
+      <div style={{ fontWeight:800, fontSize:12, color:t.accD, marginBottom:10 }}>ACTIVAR PAQUETE</div>
+      <div style={{ marginBottom:8 }}>
+        <div style={{ fontSize:10, fontWeight:700, color:t.text3, marginBottom:5 }}>VISITAS AL MES</div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+          {PKG_VISITS.map(v => (
+            <button key={v} onClick={() => setVisits(v)} style={{ padding:"5px 12px", borderRadius:8, border:"1.5px solid "+(visits===v?t.acc:t.bord), background:visits===v?t.accBg:"transparent", color:visits===v?t.accD:t.text2, fontWeight:700, fontSize:12, cursor:"pointer" }}>{v}x</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginBottom:10 }}>
+        <div style={{ fontSize:10, fontWeight:700, color:t.text3, marginBottom:5 }}>HORAS POR VISITA</div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+          {PKG_HOURS.map(h => (
+            <button key={h} onClick={() => setHours(h)} style={{ padding:"5px 12px", borderRadius:8, border:"1.5px solid "+(hours===h?t.acc:t.bord), background:hours===h?t.accBg:"transparent", color:hours===h?t.accD:t.text2, fontWeight:700, fontSize:12, cursor:"pointer" }}>{h}h</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+        <div style={{ fontWeight:900, fontSize:16, color:t.accD }}>${price.toLocaleString()}</div>
+        <div style={{ fontSize:11, color:t.text3 }}>{visits} visitas · {hours}h c/u · 31 días</div>
+      </div>
+      <div style={{ display:"flex", gap:8 }}>
+        <button onClick={() => setOpen(false)} style={{ flex:1, padding:"8px", borderRadius:9, border:"1px solid "+t.bord, background:"transparent", color:t.text2, fontWeight:700, fontSize:12, cursor:"pointer" }}>Cancelar</button>
+        <button onClick={activate} style={{ flex:2, padding:"8px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", fontWeight:700, fontSize:12, cursor:"pointer" }}>★ Activar paquete</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <button onClick={() => setOpen(true)} style={{ width:"100%", marginTop:6, padding:"7px", borderRadius:9, border:"1.5px dashed "+t.bord, background:"transparent", color:t.text3, fontWeight:600, fontSize:12, cursor:"pointer" }}>
+      + Activar paquete
+    </button>
+  );
+}
+
+const FORM_TABS = [{id:"perrito",label:"🐾 Perrito"},{id:"tutor",label:"👤 Tutor"},{id:"salud",label:"🏥 Salud"},{id:"alimentacion",label:"🍽 Aliment."},{id:"comportamiento",label:"🧠 Comport."},{id:"vacunas",label:"💉 Vacunas"},{id:"cuidador",label:"📋 Cuidador"},{id:"grooming",label:"✂ Grooming"},{id:"responsivas",label:"📄 Responsivas"},{id:"hotel",label:"🏨 Hotel"},{id:"seguimiento",label:"🚨 Seguimiento"},{id:"paquete",label:"📦 Paquete"}];
 
 function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
   const t = getT(dark);
@@ -841,7 +1004,77 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
             ))}
           </div>
         )}
-        {tab === "seguimiento" && (
+        
+          {tab === "paquete" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+              {/* Current package status */}
+              {dog.package?.active && (() => {
+                const st = pkgStatus(dog.package);
+                const days = pkgDaysLeft(dog.package);
+                const statusColors = {
+                  active:   { bg:"#E8F0DC", color:"#143B31", border:"#AACC71" },
+                  expiring: { bg:"#FFFBEB", color:"#D97706", border:"#F59E0B" },
+                  expired:  { bg:"#FEF2F2", color:"#EF4444", border:"#FECACA" },
+                  used:     { bg:"#FEF2F2", color:"#EF4444", border:"#FECACA" },
+                };
+                const sc = statusColors[st] || statusColors.active;
+                return (
+                  <div style={{ padding:"14px 16px", borderRadius:14, background:sc.bg, border:"1.5px solid "+sc.border }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                      <div style={{ fontWeight:800, fontSize:14, color:sc.color }}>
+                        {st==="active" ? "✅ Paquete activo" : st==="expiring" ? "⚠ Vence pronto" : st==="used" ? "⛔ Visitas agotadas" : "❌ Paquete vencido"}
+                      </div>
+                      {isAdmin && <button onClick={() => {if(confirm("¿Desactivar paquete?")) set("package",{...dog.package,active:false});}} style={{ background:"none", border:"none", color:"#EF4444", fontSize:12, cursor:"pointer", fontWeight:700 }}>Desactivar</button>}
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                      {[
+                        ["Visitas/mes", dog.package.visits],
+                        ["Hrs/visita", dog.package.hoursPerVisit+"h"],
+                        ["Precio", "$"+getPkgPrice(dog.package.visits, dog.package.hoursPerVisit).toLocaleString()],
+                        ["Usadas", dog.package.usedVisits||0],
+                        ["Restantes", dog.package.remainingVisits],
+                        ["Vence en", days < 0 ? "Vencido" : days+"d"],
+                      ].map(([l,v]) => (
+                        <div key={l} style={{ background:"rgba(255,255,255,0.5)", borderRadius:10, padding:"8px 10px" }}>
+                          <div style={{ fontSize:9, fontWeight:800, color:sc.color, opacity:0.7, letterSpacing:"0.08em" }}>{l}</div>
+                          <div style={{ fontSize:15, fontWeight:900, color:sc.color }}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {dog.phone && (
+                      <button onClick={() => {
+                        const st2 = pkgStatus(dog.package);
+                        const days2 = pkgDaysLeft(dog.package);
+                        const rem = dog.package.remainingVisits;
+                        let msg = "Hola " + (dog.owner||"") + "! Te contactamos de *Paw Park* 🐾\n\n";
+                        msg += "*" + dog.name + "* tiene un paquete ";
+                        if (st2 === "expiring") msg += "que *vence en " + days2 + " días*. ";
+                        if (st2 === "expired") msg += "que *ya venció*. ";
+                        if (st2 === "used") msg += "con *visitas agotadas*. ";
+                        msg += "\n\nVisitas restantes: *" + rem + "*\n";
+                        msg += "¿Te gustaría renovarlo? 😊";
+                        openWA(dog.phone, msg);
+                      }} style={{ marginTop:10, width:"100%", padding:"9px", borderRadius:10, border:"none", background:"#25D366", color:"white", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                        📱 Enviar recordatorio WhatsApp
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* New package form */}
+              {(isAdmin || currentUser?.isDaycare) && (
+                <div style={{ padding:"16px", borderRadius:14, border:"1.5px solid "+t.bord, background:t.surf2 }}>
+                  <div style={{ fontWeight:800, fontSize:13, color:t.text, marginBottom:14 }}>
+                    {dog.package?.active ? "Renovar paquete" : "Contratar paquete"}
+                  </div>
+                  <NewPackageForm dark={dark} dog={dog} onSave={pkg => set("package", pkg)} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "seguimiento" && (
           <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
             <TA dark={dark} label="OBSERVACIONES DE SALUD (PIEL, OJOS, HECES, ETC.)" value={dog.incidents?.healthObservations||""} onChange={v=>set("incidents",{...(dog.incidents||{}),healthObservations:v})} rows={3} />
             <TA dark={dark} label="RECOMENDACIONES PARA FUTURAS VISITAS" value={dog.incidents?.futureRecommendations||""} onChange={v=>set("incidents",{...(dog.incidents||{}),futureRecommendations:v})} rows={4} />
@@ -870,7 +1103,7 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
   const meals=[{key:"morning",label:"Manana"},{key:"afternoon",label:"Tarde"},{key:"evening",label:"Noche"}];
   const [dTab,setDTab]=useState("perfil");
   const needsWA=["expired","soon"].includes(vs)&&dog.phone;
-  const dtabs=[{id:"perfil",label:"Perfil"},{id:"salud",label:"Salud"},{id:"alimentacion",label:"Aliment."},{id:"comportamiento",label:"Comport."},{id:"vacunas",label:"Vacunas"},{id:"cuidador",label:"Cuidador"},{id:"grooming",label:"Grooming"},{id:"responsivas",label:"Responsivas",badge:isAdmin&&miss.length>0?miss.length:null},{id:"hotel",label:"Hotel",badge:totalInc>0?totalInc:null},{id:"seguimiento",label:"Seguimiento"}];
+  const dtabs=[{id:"perfil",label:"Perfil"},{id:"salud",label:"Salud"},{id:"alimentacion",label:"Aliment."},{id:"comportamiento",label:"Comport."},{id:"vacunas",label:"Vacunas"},{id:"cuidador",label:"Cuidador"},{id:"grooming",label:"Grooming"},{id:"responsivas",label:"Responsivas",badge:isAdmin&&miss.length>0?miss.length:null},{id:"hotel",label:"Hotel",badge:totalInc>0?totalInc:null},{id:"seguimiento",label:"Seguimiento"},{id:"paquete",label:"📦 Paquete"}];
   return (
     <div>
       <button onClick={onBack} style={{ background:"none", border:"none", color:t.acc, fontWeight:700, cursor:"pointer", fontSize:13, marginBottom:13, padding:0 }}>Volver</button>
@@ -911,6 +1144,7 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
           {dTab==="responsivas"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}>{isAdmin&&miss.length>0&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span>⚠</span><div style={{ fontWeight:700,fontSize:13,color:t.accD }}>{"Faltan: "+miss.join(" - ")}</div></div>}{[{key:"guarderia",label:"Responsiva Guarderia"},{key:"hotel",label:"Responsiva Hotel"}].map(({key,label})=><div key={key}><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{label}</div><div style={{ padding:"11px 14px",borderRadius:11,background:resp[key]?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(resp[key]?"#86EFAC":"#FECACA"),fontSize:13,color:resp[key]?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}><span>{resp[key]?"✅ "+resp[key].name+" - "+resp[key].date:"Sin cargar"}</span>{resp[key]?.data&&<a href={resp[key].data} download={resp[key].name} style={{ padding:"4px 10px",borderRadius:7,background:"#DCFCE7",color:"#15803D",fontSize:11,fontWeight:700,textDecoration:"none",border:"1px solid #86EFAC" }}>Descargar</a>}</div></div>)}</div>}
           {dTab==="hotel"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}><div style={{ display:"flex",gap:13,padding:"11px 14px",borderRadius:11,background:t.accBg,border:"1px solid "+t.acc+"30" }}><div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:t.acc,fontFamily:"Georgia,serif" }}>{stays.length}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>ESTANCIAS</div></div><div style={{ width:1,background:t.bord }}/><div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:"#EF4444",fontFamily:"Georgia,serif" }}>{totalInc}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>INCIDENTES</div></div></div>{stays.length===0?<div style={{ textAlign:"center",padding:"22px 0",color:t.text3 }}><div style={{ fontSize:32 }}>🏨</div><div style={{ fontWeight:700,marginTop:7 }}>Sin estancias</div></div>:stays.slice().reverse().map(stay=><StayCard key={stay.id} dark={dark} stay={stay} dog={dog} currentUser={currentUser} readOnly onDelete={null} onChange={()=>{}}/>)}</div>}
           {dTab==="seguimiento"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="OBSERVACIONES DE SALUD" value={inc.healthObservations}/><IRow dark={dark} label="RECOMENDACIONES" value={inc.futureRecommendations}/></div>}
+                  {dTab==="paquete"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}>{dog.package?.active ? <div style={{ padding:"14px 16px",borderRadius:14,background:["expired","used"].includes(pkgStatus(dog.package))?"#FEF2F2":pkgStatus(dog.package)==="expiring"?"#FFFBEB":"#E8F0DC",border:"1.5px solid "+(["expired","used"].includes(pkgStatus(dog.package))?"#FECACA":pkgStatus(dog.package)==="expiring"?"#F59E0B40":"#AACC71") }}><IRow dark={dark} label="VISITAS AL MES" value={dog.package.visits}/><IRow dark={dark} label="HORAS POR VISITA" value={dog.package.hoursPerVisit+"h"}/><IRow dark={dark} label="VISITAS RESTANTES" value={dog.package.remainingVisits+" de "+dog.package.visits}/><IRow dark={dark} label="VENCE" value={dog.package.endDate}/></div> : <div style={{ textAlign:"center",padding:"20px 0",color:t.text3 }}>Sin paquete activo</div>}</div>}
         </div>
       </Card>
     </div>
@@ -1137,9 +1371,10 @@ function DaycarePanel({ dark, currentUser, dogs }) {
                       <div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}</div>
                       <div style={{ fontSize:12, color:t.text2 }}>{dog.owner}{dog.phone ? " · " + dog.phone : ""}</div>
                     </div>
-                    {hasPackage && (
-                      <span style={{ background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800 }}>★ Paquete</span>
-                    )}
+                    {hasPackage
+                      ? <span style={{ background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800 }}>★ Paquete</span>
+                      : <span style={{ background:t.surf2, color:t.text3, borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:600, border:"1px dashed "+t.bord }}>Sin paquete</span>
+                    }
                   </div>
                 );
               })}
@@ -1206,6 +1441,7 @@ function DaycarePanel({ dark, currentUser, dogs }) {
                         ■ Finalizar
                       </button>
                     </div>
+                    {!isGold && <PkgQuickActivate dark={dark} session={s} dogs={dogs} />}
                   </div>
                 </div>
               );
@@ -1428,6 +1664,56 @@ export default function PawPark() {
                 </div>
               </Card>
             )}
+
+            {/* Package alerts panel - admin only */}
+            {isAdmin && (() => {
+              const pkgDogs = dogs.filter(d => d.package?.active);
+              const expiring = pkgDogs.filter(d => pkgStatus(d.package) === "expiring").sort((a,b) => pkgDaysLeft(a.package) - pkgDaysLeft(b.package));
+              const expired  = pkgDogs.filter(d => ["expired","used"].includes(pkgStatus(d.package)));
+              if (expiring.length === 0 && expired.length === 0) return null;
+              return (
+                <Card dark={dark} style={{ border:"2px solid #C1712C30" }}>
+                  <div style={{ fontWeight:800, fontSize:14, color:t.text, marginBottom:14 }}>📦 Paquetes — atención requerida</div>
+                  {expired.length > 0 && (
+                    <div style={{ marginBottom:12 }}>
+                      <div style={{ fontSize:11, fontWeight:800, color:"#EF4444", marginBottom:8, letterSpacing:"0.06em" }}>VENCIDOS / AGOTADOS ({expired.length})</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {expired.map(dog => (
+                          <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:11, background:"#FEF2F2", border:"1px solid #FECACA", cursor:"pointer" }}>
+                            <DogAvatar dog={dog} size={32} />
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontWeight:700, fontSize:13, color:"#EF4444" }}>{dog.name}</div>
+                              <div style={{ fontSize:11, color:"#9CA3AF" }}>{dog.owner}</div>
+                            </div>
+                            <div style={{ fontSize:11, fontWeight:700, color:"#EF4444" }}>{pkgStatus(dog.package)==="used"?"Visitas agotadas":"Vencido"}</div>
+                            {dog.phone && <button onClick={e=>{e.stopPropagation();const msg="Hola "+dog.owner+"! El paquete de *"+dog.name+"* ha vencido/se agotó. ¿Te gustaría renovarlo? 🐾";openWA(dog.phone,msg);}} style={{ background:"#25D366", border:"none", borderRadius:8, padding:"4px 10px", color:"white", fontSize:11, fontWeight:700, cursor:"pointer" }}>WA</button>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {expiring.length > 0 && (
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:800, color:"#D97706", marginBottom:8, letterSpacing:"0.06em" }}>POR VENCER ({expiring.length})</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {expiring.map(dog => (
+                          <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:11, background:"#FFFBEB", border:"1px solid #F59E0B40", cursor:"pointer" }}>
+                            <DogAvatar dog={dog} size={32} />
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontWeight:700, fontSize:13, color:"#D97706" }}>{dog.name}</div>
+                              <div style={{ fontSize:11, color:"#9CA3AF" }}>{dog.owner}</div>
+                            </div>
+                            <div style={{ fontSize:11, fontWeight:700, color:"#D97706" }}>Vence en {pkgDaysLeft(dog.package)}d</div>
+                            {dog.phone && <button onClick={e=>{e.stopPropagation();const msg="Hola "+dog.owner+"! El paquete de *"+dog.name+"* vence en "+pkgDaysLeft(dog.package)+" días. ¿Te gustaría renovarlo? 🐾";openWA(dog.phone,msg);}} style={{ background:"#25D366", border:"none", borderRadius:8, padding:"4px 10px", color:"white", fontSize:11, fontWeight:700, cursor:"pointer" }}>WA</button>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })()}
+
             {/* Birthday panel */}
             {(() => {
               const bdays = upcomingBirthdays(dogs, 31);
@@ -1548,7 +1834,8 @@ export default function PawPark() {
                         <BehBadge result={dog.care?.result||"pending"} sm />
                         {sv && <span style={{ fontSize:10, fontWeight:700, color:sv.color, background:sv.bg, borderRadius:6, padding:"2px 7px" }}>{"👁 "+sv.label}</span>}
                       </div>
-                      {(dog.areas||[]).length > 0 && (
+                      {dog.package?.active && pkgStatus(dog.package)==="active" && <div style={{ marginTop:5 }}><span style={{ background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:800 }}>★ Paquete activo</span></div>}
+                {(dog.areas||[]).length > 0 && (
                         <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:7 }}>
                           {(dog.areas||[]).map(a => { const AC = { Guarderia:"#22C55E", Hotel:"#3B82F6", Grooming:"#EC4899", Adiestramiento:"#8B5CF6", "Day Pass Personalizado":"#C1712C" }; const ac = AC[a]||"#6B7280"; return <span key={a} style={{ background:ac+"18", color:ac, border:"1px solid "+ac+"40", borderRadius:99, padding:"1px 8px", fontSize:10, fontWeight:700 }}>{a}</span>; })}
                         </div>
@@ -1583,7 +1870,7 @@ export default function PawPark() {
           const meals = [{key:"morning",label:"Manana"},{key:"afternoon",label:"Tarde"},{key:"evening",label:"Noche"}];
           const [dTab, setDTab] = useState("perfil");
           const needsWA = ["expired","soon"].includes(vs) && dog.phone;
-          const dtabs = [{id:"perfil",label:"Perfil"},{id:"salud",label:"Salud"},{id:"alimentacion",label:"Aliment."},{id:"comportamiento",label:"Comport."},{id:"vacunas",label:"Vacunas"},{id:"cuidador",label:"Cuidador"},{id:"grooming",label:"Grooming"},{id:"responsivas",label:"Responsivas",badge:isAdmin&&miss.length>0?miss.length:null},{id:"hotel",label:"Hotel",badge:totalInc>0?totalInc:null},{id:"seguimiento",label:"Seguimiento"}];
+          const dtabs = [{id:"perfil",label:"Perfil"},{id:"salud",label:"Salud"},{id:"alimentacion",label:"Aliment."},{id:"comportamiento",label:"Comport."},{id:"vacunas",label:"Vacunas"},{id:"cuidador",label:"Cuidador"},{id:"grooming",label:"Grooming"},{id:"responsivas",label:"Responsivas",badge:isAdmin&&miss.length>0?miss.length:null},{id:"hotel",label:"Hotel",badge:totalInc>0?totalInc:null},{id:"seguimiento",label:"Seguimiento"},{id:"paquete",label:"📦 Paquete"}];
           return (
             <div>
               <button onClick={() => setView("list")} style={{ background:"none", border:"none", color:t.acc, fontWeight:700, cursor:"pointer", fontSize:13, marginBottom:13, padding:0 }}>Volver</button>
