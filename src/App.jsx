@@ -1954,18 +1954,24 @@ export default function PawPark() {
                 </Card>
               ))}
             </div>
-            {isAdmin && incompleteCount > 0 && (
+            {isAdmin && incompleteCount > 0 && (() => {
+              const [showResp, setShowResp] = useState(false);
+              return (
               <Card dark={dark} style={{ border:"2px solid " + t.acc + "30" }}>
-                <div style={{ fontWeight:800, fontSize:14, color:t.text, marginBottom:13 }}>Responsivas pendientes</div>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:9 }}>
+                <div onClick={() => setShowResp(r => !r)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
+                  <div style={{ fontWeight:800, fontSize:14, color:t.text }}>⚠ Responsivas pendientes ({incompleteCount})</div>
+                  <span style={{ fontSize:16, color:t.acc }}>{showResp ? "▲" : "▼"}</span>
+                </div>
+                {showResp && <div style={{ display:"flex", flexWrap:"wrap", gap:9 }}>
                   {dogs.filter(d=>pmiss(d).length>0).map(dog => (
                     <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 13px", borderRadius:11, border:"1.5px solid " + t.acc + "30", background:t.accBg, cursor:"pointer" }}>
                       <DogAvatar dog={dog} size={32} /><div><div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dog.name}</div><div style={{ fontSize:10, color:t.acc }}>Falta: {pmiss(dog).join(", ")}</div></div>
                     </div>
                   ))}
-                </div>
+                </div>}
               </Card>
-            )}
+              );
+            })()}
 
             {/* Package alerts panel - admin only */}
             {isAdmin && (() => {
