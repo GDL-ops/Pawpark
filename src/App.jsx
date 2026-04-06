@@ -1689,7 +1689,7 @@ function AnalyticsPanel({ dark, dogs, sessions }) {
   const totalRevenue = doneSessions.filter(s => !s.hasPackage).reduce((a,s) => a + (parseInt(s.rangePrice)||0), 0);
   const pkgPct = totalVisits > 0 ? Math.round(doneSessions.filter(s => s.hasPackage).length / totalVisits * 100) : 0;
 
-  if (doneSessions.length === 0 && sessions.filter(s=>s.status==="done").length === 0) return null;
+  // Always show panel to admin even if no sessions yet
 
   return (
     <Card dark={dark} style={{ border:"2px solid "+t.acc+"20" }}>
@@ -2084,7 +2084,7 @@ export default function PawPark() {
                 </div>
               </Card>
             )}
-            <AnalyticsPanel dark={dark} dogs={dogs} sessions={sessions} />
+            {isAdmin && <AnalyticsPanel dark={dark} dogs={dogs} sessions={sessions} />}
           </div>
         )}
 
