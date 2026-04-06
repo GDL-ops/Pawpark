@@ -6,9 +6,9 @@ export const config = {
 };
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "pawpark-61797";
-const FIREBASE_API_KEY = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-const REPORT_EMAILS = ["veronica.yanezgo@gmail.com", "gdavilalimon@gmail.com"];
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "pawpark-61797";
+const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
+const REPORT_EMAILS = ["gdavilalimon@gmail.com"];
 
 async function getFirestoreData(collection) {
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}?key=${FIREBASE_API_KEY}&pageSize=300`;
