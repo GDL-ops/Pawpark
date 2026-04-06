@@ -701,6 +701,53 @@ function NewPackageForm({ dark, dog, onSave }) {
 }
 
 
+
+// ---- Edit Check-in Time -----------------------------------------------------
+function EditCheckInTime({ dark, session }) {
+  const t = getT(dark);
+  const [open, setOpen] = useState(false);
+  const [timeVal, setTimeVal] = useState("");
+
+  const openEdit = () => {
+    const d = new Date(session.checkIn);
+    const hh = String(d.getHours()).padStart(2,"0");
+    const mm = String(d.getMinutes()).padStart(2,"0");
+    setTimeVal(hh + ":" + mm);
+    setOpen(true);
+  };
+
+  const save = async () => {
+    if (!timeVal) return;
+    const [hh, mm] = timeVal.split(":").map(Number);
+    const original = new Date(session.checkIn);
+    const newCheckIn = new Date(original);
+    newCheckIn.setHours(hh, mm, 0, 0);
+    await setDoc(doc(db, "daycare_sessions", session.id), {
+      ...session,
+      checkIn: newCheckIn.getTime()
+    });
+    setOpen(false);
+  };
+
+  if (open) return (
+    <div style={{ marginTop:8, padding:"12px", borderRadius:12, background:t.surf2, border:"1px solid "+t.bord }}>
+      <div style={{ fontWeight:800, fontSize:12, color:t.text, marginBottom:10 }}>EDITAR HORA DE INGRESO</div>
+      <input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)}
+        style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1.5px solid "+t.acc, fontSize:18, fontWeight:700, background:t.surf, color:t.text, outline:"none", boxSizing:"border-box", textAlign:"center", fontFamily:"monospace" }} />
+      <div style={{ display:"flex", gap:8, marginTop:10 }}>
+        <button onClick={() => setOpen(false)} style={{ flex:1, padding:"8px", borderRadius:9, border:"1px solid "+t.bord, background:"transparent", color:t.text2, fontWeight:700, fontSize:12, cursor:"pointer" }}>Cancelar</button>
+        <button onClick={save} style={{ flex:2, padding:"8px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#35201E,#143B31)", color:"white", fontWeight:700, fontSize:12, cursor:"pointer" }}>Guardar hora</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <button onClick={openEdit} style={{ width:"100%", marginTop:4, padding:"6px", borderRadius:9, border:"1px dashed "+t.bord, background:"transparent", color:t.text3, fontWeight:600, fontSize:11, cursor:"pointer" }}>
+      ✏️ Editar hora de ingreso ({new Date(session.checkIn).toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"})})
+    </button>
+  );
+}
+
 // ---- Quick Package Activation from Daycare Panel ---------------------------
 function PkgQuickActivate({ dark, session, dogs }) {
   const t = getT(dark);
@@ -1442,6 +1489,7 @@ function DaycarePanel({ dark, currentUser, dogs }) {
                       </button>
                     </div>
                     {!isGold && <PkgQuickActivate dark={dark} session={s} dogs={dogs} />}
+                    <EditCheckInTime dark={dark} session={s} />
                   </div>
                 </div>
               );
