@@ -812,7 +812,7 @@ function PkgQuickActivate({ dark, session, dogs }) {
   );
 }
 
-const FORM_TABS = [{id:"perrito",label:"🐾 Perrito"},{id:"tutor",label:"👤 Tutor"},{id:"salud",label:"🏥 Salud"},{id:"alimentacion",label:"🍽 Aliment."},{id:"comportamiento",label:"🧠 Comport."},{id:"vacunas",label:"💉 Vacunas"},{id:"cuidador",label:"📋 Cuidador"},{id:"grooming",label:"✂ Grooming"},{id:"responsivas",label:"📄 Responsivas"},{id:"hotel",label:"🏨 Hotel"},{id:"seguimiento",label:"🚨 Seguimiento"},{id:"paquete",label:"📦 Paquete"}];
+const FORM_TABS = [{id:"perrito",label:"🐾 Perrito"},{id:"tutor",label:"👤 Tutor"},{id:"salud",label:"🏥 Salud"},{id:"alimentacion",label:"🍽 Aliment."},{id:"comportamiento",label:"🧠 Comport."},{id:"vacunas",label:"💉 Vacunas"},{id:"cuidador",label:"📋 Cuidador"},{id:"grooming",label:"✂ Grooming"},{id:"responsivas",label:"📄 Responsivas"},{id:"hotel",label:"🏨 Hotel"},{id:"seguimiento",label:"🚨 Seguimiento"},{id:"paquete",label:"📦 Paquete"},{id:"historial",label:"📅 Historial"}];
 
 function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
   const t = getT(dark);
@@ -1121,6 +1121,47 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
             </div>
           )}
 
+          
+          {tab === "historial" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              {(() => {
+                const visits = [...(dog.daycareHistory||[])].reverse();
+                if (visits.length === 0) return (
+                  <div style={{ textAlign:"center", padding:"30px 0", color:t.text3 }}>
+                    <div style={{ fontSize:36, marginBottom:8 }}>🐾</div>
+                    <div style={{ fontWeight:700 }}>Sin visitas registradas</div>
+                  </div>
+                );
+                const totalVisits = visits.length;
+                const totalMs = visits.reduce((a,v) => a + (v.durationMs||0), 0);
+                return <>
+                  <div style={{ padding:"11px 14px", borderRadius:12, background:t.accBg, border:"1px solid "+t.acc+"40", display:"flex", gap:20 }}>
+                    <div><div style={{ fontSize:20, fontWeight:900, color:t.accD }}>{totalVisits}</div><div style={{ fontSize:10, color:t.text3, fontWeight:700 }}>VISITAS</div></div>
+                    <div><div style={{ fontSize:20, fontWeight:900, color:t.accD }}>{(totalMs/3600000).toFixed(1)}h</div><div style={{ fontSize:10, color:t.text3, fontWeight:700 }}>HORAS TOTALES</div></div>
+                  </div>
+                  {visits.slice(0,10).map((v,i) => {
+                    const date = new Date(v.checkIn);
+                    const dateStr = date.toLocaleDateString("es-MX",{day:"numeric",month:"short",year:"numeric"});
+                    const inTime = date.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+                    const outTime = v.checkOut ? new Date(v.checkOut).toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"}) : "--:--";
+                    const hrs = v.durationMs ? (v.durationMs/3600000).toFixed(1)+"h" : "--";
+                    return (
+                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 13px", borderRadius:11, background:t.surf2, border:"1px solid "+(v.hasPackage?"#C1712C30":t.bord) }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dateStr}</div>
+                          <div style={{ fontSize:11, color:t.text2 }}>{inTime} → {outTime} · {hrs}</div>
+                        </div>
+                        {v.hasPackage
+                          ? <span style={{ background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:800 }}>★ PKG</span>
+                          : <span style={{ fontWeight:800, color:t.acc, fontSize:13 }}>${(v.rangePrice||0).toLocaleString()}</span>
+                        }
+                      </div>
+                    );
+                  })}
+                </>;
+              })()}
+            </div>
+          )}
           {tab === "seguimiento" && (
           <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
             <TA dark={dark} label="OBSERVACIONES DE SALUD (PIEL, OJOS, HECES, ETC.)" value={dog.incidents?.healthObservations||""} onChange={v=>set("incidents",{...(dog.incidents||{}),healthObservations:v})} rows={3} />
@@ -1150,7 +1191,7 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
   const meals=[{key:"morning",label:"Manana"},{key:"afternoon",label:"Tarde"},{key:"evening",label:"Noche"}];
   const [dTab,setDTab]=useState("perfil");
   const needsWA=["expired","soon"].includes(vs)&&dog.phone;
-  const dtabs=[{id:"perfil",label:"Perfil"},{id:"salud",label:"Salud"},{id:"alimentacion",label:"Aliment."},{id:"comportamiento",label:"Comport."},{id:"vacunas",label:"Vacunas"},{id:"cuidador",label:"Cuidador"},{id:"grooming",label:"Grooming"},{id:"responsivas",label:"Responsivas",badge:isAdmin&&miss.length>0?miss.length:null},{id:"hotel",label:"Hotel",badge:totalInc>0?totalInc:null},{id:"seguimiento",label:"Seguimiento"},{id:"paquete",label:"📦 Paquete"}];
+  const dtabs=[{id:"perfil",label:"Perfil"},{id:"salud",label:"Salud"},{id:"alimentacion",label:"Aliment."},{id:"comportamiento",label:"Comport."},{id:"vacunas",label:"Vacunas"},{id:"cuidador",label:"Cuidador"},{id:"grooming",label:"Grooming"},{id:"responsivas",label:"Responsivas",badge:isAdmin&&miss.length>0?miss.length:null},{id:"hotel",label:"Hotel",badge:totalInc>0?totalInc:null},{id:"seguimiento",label:"Seguimiento"},{id:"paquete",label:"📦 Paquete"},{id:"historial",label:"📅 Historial"}];
   return (
     <div>
       <button onClick={onBack} style={{ background:"none", border:"none", color:t.acc, fontWeight:700, cursor:"pointer", fontSize:13, marginBottom:13, padding:0 }}>Volver</button>
@@ -1191,6 +1232,62 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
           {dTab==="responsivas"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}>{isAdmin&&miss.length>0&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span>⚠</span><div style={{ fontWeight:700,fontSize:13,color:t.accD }}>{"Faltan: "+miss.join(" - ")}</div></div>}{[{key:"guarderia",label:"Responsiva Guarderia"},{key:"hotel",label:"Responsiva Hotel"}].map(({key,label})=><div key={key}><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{label}</div><div style={{ padding:"11px 14px",borderRadius:11,background:resp[key]?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(resp[key]?"#86EFAC":"#FECACA"),fontSize:13,color:resp[key]?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}><span>{resp[key]?"✅ "+resp[key].name+" - "+resp[key].date:"Sin cargar"}</span>{resp[key]?.data&&<a href={resp[key].data} download={resp[key].name} style={{ padding:"4px 10px",borderRadius:7,background:"#DCFCE7",color:"#15803D",fontSize:11,fontWeight:700,textDecoration:"none",border:"1px solid #86EFAC" }}>Descargar</a>}</div></div>)}</div>}
           {dTab==="hotel"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}><div style={{ display:"flex",gap:13,padding:"11px 14px",borderRadius:11,background:t.accBg,border:"1px solid "+t.acc+"30" }}><div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:t.acc,fontFamily:"Georgia,serif" }}>{stays.length}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>ESTANCIAS</div></div><div style={{ width:1,background:t.bord }}/><div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:"#EF4444",fontFamily:"Georgia,serif" }}>{totalInc}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>INCIDENTES</div></div></div>{stays.length===0?<div style={{ textAlign:"center",padding:"22px 0",color:t.text3 }}><div style={{ fontSize:32 }}>🏨</div><div style={{ fontWeight:700,marginTop:7 }}>Sin estancias</div></div>:stays.slice().reverse().map(stay=><StayCard key={stay.id} dark={dark} stay={stay} dog={dog} currentUser={currentUser} readOnly onDelete={null} onChange={()=>{}}/>)}</div>}
           {dTab==="seguimiento"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="OBSERVACIONES DE SALUD" value={inc.healthObservations}/><IRow dark={dark} label="RECOMENDACIONES" value={inc.futureRecommendations}/></div>}
+                  {dTab==="historial"&&<div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+                    {(() => {
+                      const visits = [...(dog.daycareHistory||[])].reverse();
+                      if (visits.length === 0) return (
+                        <div style={{ textAlign:"center", padding:"30px 0", color:t.text3 }}>
+                          <div style={{ fontSize:36, marginBottom:8 }}>🐾</div>
+                          <div style={{ fontWeight:700 }}>Sin visitas registradas</div>
+                          <div style={{ fontSize:12, marginTop:4 }}>Las visitas de guardería aparecerán aquí</div>
+                        </div>
+                      );
+                      const totalVisits = visits.length;
+                      const totalMs = visits.reduce((a,v) => a + (v.durationMs||0), 0);
+                      const pkgVisits = visits.filter(v => v.hasPackage).length;
+                      const totalSpent = visits.filter(v => !v.hasPackage).reduce((a,v) => a + (v.rangePrice||0), 0);
+                      return <>
+                        {/* Summary */}
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+                          {[
+                            ["VISITAS", totalVisits, t.acc],
+                            ["HORAS", (totalMs/3600000).toFixed(1)+"h", t.acc],
+                            ["CON PKG", pkgVisits, "#C1712C"],
+                            ["GASTADO", "$"+totalSpent.toLocaleString(), "#143B31"],
+                          ].map(([l,v,c]) => (
+                            <div key={l} style={{ background:t.surf2, borderRadius:10, padding:"10px 8px", textAlign:"center", border:"1px solid "+t.bord }}>
+                              <div style={{ fontSize:16, fontWeight:900, color:c }}>{v}</div>
+                              <div style={{ fontSize:9, color:t.text3, fontWeight:700, marginTop:2 }}>{l}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Visit list */}
+                        {visits.map((v,i) => {
+                          const date = new Date(v.checkIn);
+                          const dateStr = date.toLocaleDateString("es-MX",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
+                          const inTime = date.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+                          const outTime = v.checkOut ? new Date(v.checkOut).toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"}) : "--:--";
+                          const hrs = v.durationMs ? (v.durationMs/3600000).toFixed(1)+"h" : "--";
+                          return (
+                            <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderRadius:13, background:t.surf, border:"1px solid "+(v.hasPackage?"#C1712C30":t.bord) }}>
+                              <div style={{ width:36, height:36, borderRadius:10, background:v.hasPackage?"linear-gradient(135deg,#C1712C,#F8D061)":"linear-gradient(135deg,#143B31,#AACC71)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>🐾</div>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{dateStr}</div>
+                                <div style={{ fontSize:11, color:t.text2, marginTop:2 }}>{inTime} → {outTime} · {hrs}</div>
+                              </div>
+                              <div style={{ textAlign:"right" }}>
+                                {v.hasPackage
+                                  ? <div style={{ background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800 }}>★ Paquete</div>
+                                  : <div style={{ fontWeight:800, fontSize:14, color:t.acc }}>${(v.rangePrice||0).toLocaleString()}</div>
+                                }
+                                {v.rangeLabel && <div style={{ fontSize:10, color:t.text3, marginTop:2 }}>{v.rangeLabel}</div>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>;
+                    })()}
+                  </div>}
                   {dTab==="paquete"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}>{dog.package?.active ? <div style={{ padding:"14px 16px",borderRadius:14,background:["expired","used"].includes(pkgStatus(dog.package))?"#FEF2F2":pkgStatus(dog.package)==="expiring"?"#FFFBEB":"#E8F0DC",border:"1.5px solid "+(["expired","used"].includes(pkgStatus(dog.package))?"#FECACA":pkgStatus(dog.package)==="expiring"?"#F59E0B40":"#AACC71") }}><IRow dark={dark} label="VISITAS AL MES" value={dog.package.visits}/><IRow dark={dark} label="HORAS POR VISITA" value={dog.package.hoursPerVisit+"h"}/><IRow dark={dark} label="VISITAS RESTANTES" value={dog.package.remainingVisits+" de "+dog.package.visits}/><IRow dark={dark} label="VENCE" value={dog.package.endDate}/></div> : <div style={{ textAlign:"center",padding:"20px 0",color:t.text3 }}>Sin paquete activo</div>}</div>}
         </div>
       </Card>
@@ -1923,7 +2020,7 @@ export default function PawPark() {
           const meals = [{key:"morning",label:"Manana"},{key:"afternoon",label:"Tarde"},{key:"evening",label:"Noche"}];
           const [dTab, setDTab] = useState("perfil");
           const needsWA = ["expired","soon"].includes(vs) && dog.phone;
-          const dtabs = [{id:"perfil",label:"Perfil"},{id:"salud",label:"Salud"},{id:"alimentacion",label:"Aliment."},{id:"comportamiento",label:"Comport."},{id:"vacunas",label:"Vacunas"},{id:"cuidador",label:"Cuidador"},{id:"grooming",label:"Grooming"},{id:"responsivas",label:"Responsivas",badge:isAdmin&&miss.length>0?miss.length:null},{id:"hotel",label:"Hotel",badge:totalInc>0?totalInc:null},{id:"seguimiento",label:"Seguimiento"},{id:"paquete",label:"📦 Paquete"}];
+          const dtabs = [{id:"perfil",label:"Perfil"},{id:"salud",label:"Salud"},{id:"alimentacion",label:"Aliment."},{id:"comportamiento",label:"Comport."},{id:"vacunas",label:"Vacunas"},{id:"cuidador",label:"Cuidador"},{id:"grooming",label:"Grooming"},{id:"responsivas",label:"Responsivas",badge:isAdmin&&miss.length>0?miss.length:null},{id:"hotel",label:"Hotel",badge:totalInc>0?totalInc:null},{id:"seguimiento",label:"Seguimiento"},{id:"paquete",label:"📦 Paquete"},{id:"historial",label:"📅 Historial"}];
           return (
             <div>
               <button onClick={() => setView("list")} style={{ background:"none", border:"none", color:t.acc, fontWeight:700, cursor:"pointer", fontSize:13, marginBottom:13, padding:0 }}>Volver</button>
