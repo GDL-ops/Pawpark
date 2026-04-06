@@ -644,8 +644,6 @@ function NewPackageForm({ dark, dog, onSave }) {
   const [hours, setHours]   = useState(dog.package?.hoursPerVisit || 4);
   const price = getPkgPrice(visits, hours);
   const today = new Date().toISOString().slice(0,10);
-
-  const today = new Date().toISOString().slice(0,10);
   const [startDate, setStartDate] = useState(today);
 
   const save = () => {
