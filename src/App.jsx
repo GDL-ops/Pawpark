@@ -1275,10 +1275,13 @@ export default function PawPark() {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (list.length > 0) {
         setUsers(list);
-      } else {
-        // Seed default admin on first run
-        setDoc(doc(db, "users", DEFAULT_ADMIN.id), DEFAULT_ADMIN).catch(()=>{});
+        // Ensure DAYCARE user always exists
+        if (!list.find(u => u.id === "daycare")) {
           setDoc(doc(db, "users", DEFAULT_DAYCARE.id), DEFAULT_DAYCARE).catch(()=>{});
+        }
+      } else {
+        setDoc(doc(db, "users", DEFAULT_ADMIN.id), DEFAULT_ADMIN).catch(()=>{});
+        setDoc(doc(db, "users", DEFAULT_DAYCARE.id), DEFAULT_DAYCARE).catch(()=>{});
       }
     });
 
@@ -1343,7 +1346,7 @@ export default function PawPark() {
   });
 
   // Public display URL - no login needed
-  if (typeof window !== "undefined" && window.location.pathname === "/pantalla") {
+  if (typeof window !== "undefined" && (window.location.hash === "#pantalla" || window.location.search === "?pantalla")) {
     return <PublicDaycarePanel />;
   }
 
