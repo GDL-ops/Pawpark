@@ -112,8 +112,9 @@ function pkgStatus(pkg) {
   if (!pkg?.active) return "none";
   const days = pkgDaysLeft(pkg);
   if (days < 0) return "expired";
-  if (days <= 5) return "expiring";
   if (pkg.remainingVisits <= 0) return "used";
+  if (days <= 5) return "urgent";
+  if (days <= 10) return "expiring";
   return "active";
 }
 
@@ -1915,49 +1916,41 @@ export default function PawPark() {
 
             {/* Package alerts panel - admin only */}
             {isAdmin && (() => {
-              const pkgDogs = dogs.filter(d => d.package?.active);
-              const expiring = pkgDogs.filter(d => pkgStatus(d.package) === "expiring").sort((a,b) => pkgDaysLeft(a.package) - pkgDaysLeft(b.package));
-              const expired  = pkgDogs.filter(d => ["expired","used"].includes(pkgStatus(d.package)));
-              if (expiring.length === 0 && expired.length === 0) return null;
+              const pkgDogs = dogs.filter(d => d.package?.active).sort((a,b) => (pkgDaysLeft(a.package)||0) - (pkgDaysLeft(b.package)||0));
+              if (pkgDogs.length === 0) return null;
+              const statusMeta = {
+                expired:  { color:"#EF4444", bg:"#FEF2F2", border:"#FECACA",   label: "Vencido" },
+                used:     { color:"#EF4444", bg:"#FEF2F2", border:"#FECACA",   label: "Agotado" },
+                urgent:   { color:"#EF4444", bg:"#FEF2F2", border:"#FECACA",   label: d => "Vence en "+d+"d" },
+                expiring: { color:"#D97706", bg:"#FFFBEB", border:"#F59E0B40", label: d => "Vence en "+d+"d" },
+                active:   { color:"#22C55E", bg:"#F0FDF4", border:"#86EFAC40", label: d => "Vence en "+d+"d" },
+              };
               return (
                 <Card dark={dark} style={{ border:"2px solid #C1712C30" }}>
-                  <div style={{ fontWeight:800, fontSize:14, color:t.text, marginBottom:14 }}>📦 Paquetes — atención requerida</div>
-                  {expired.length > 0 && (
-                    <div style={{ marginBottom:12 }}>
-                      <div style={{ fontSize:11, fontWeight:800, color:"#EF4444", marginBottom:8, letterSpacing:"0.06em" }}>VENCIDOS / AGOTADOS ({expired.length})</div>
-                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                        {expired.map(dog => (
-                          <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:11, background:"#FEF2F2", border:"1px solid #FECACA", cursor:"pointer" }}>
-                            <DogAvatar dog={dog} size={32} />
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontWeight:700, fontSize:13, color:"#EF4444" }}>{dog.name}</div>
-                              <div style={{ fontSize:11, color:"#9CA3AF" }}>{dog.owner}</div>
-                            </div>
-                            <div style={{ fontSize:11, fontWeight:700, color:"#EF4444" }}>{pkgStatus(dog.package)==="used"?"Visitas agotadas":"Vencido"}</div>
-                            {dog.phone && <button onClick={e=>{e.stopPropagation();const msg="Hola "+dog.owner+"! El paquete de *"+dog.name+"* ha vencido/se agotó. ¿Te gustaría renovarlo? 🐾";openWA(dog.phone,msg);}} style={{ background:"#25D366", border:"none", borderRadius:8, padding:"4px 10px", color:"white", fontSize:11, fontWeight:700, cursor:"pointer" }}>WA</button>}
+                  <div style={{ fontWeight:800, fontSize:14, color:t.text, marginBottom:14 }}>📦 Paquetes activos ({pkgDogs.length})</div>
+                  <div style={{ maxHeight:320, overflowY:"auto", display:"flex", flexDirection:"column", gap:6, WebkitOverflowScrolling:"touch" }}>
+                    {pkgDogs.map(dog => {
+                      const st = pkgStatus(dog.package);
+                      const days = pkgDaysLeft(dog.package);
+                      const meta = statusMeta[st] || statusMeta.active;
+                      const labelText = typeof meta.label === "function" ? meta.label(days) : meta.label;
+                      return (
+                        <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:11, background:meta.bg, border:"1px solid "+meta.border, cursor:"pointer" }}>
+                          <DogAvatar dog={dog} size={32} />
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontWeight:700, fontSize:13, color:meta.color }}>{dog.name}</div>
+                            <div style={{ fontSize:11, color:"#9CA3AF" }}>{dog.owner}</div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {expiring.length > 0 && (
-                    <div>
-                      <div style={{ fontSize:11, fontWeight:800, color:"#D97706", marginBottom:8, letterSpacing:"0.06em" }}>POR VENCER ({expiring.length})</div>
-                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                        {expiring.map(dog => (
-                          <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:11, background:"#FFFBEB", border:"1px solid #F59E0B40", cursor:"pointer" }}>
-                            <DogAvatar dog={dog} size={32} />
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontWeight:700, fontSize:13, color:"#D97706" }}>{dog.name}</div>
-                              <div style={{ fontSize:11, color:"#9CA3AF" }}>{dog.owner}</div>
-                            </div>
-                            <div style={{ fontSize:11, fontWeight:700, color:"#D97706" }}>Vence en {pkgDaysLeft(dog.package)}d</div>
-                            {dog.phone && <button onClick={e=>{e.stopPropagation();const msg="Hola "+dog.owner+"! El paquete de *"+dog.name+"* vence en "+pkgDaysLeft(dog.package)+" días. ¿Te gustaría renovarlo? 🐾";openWA(dog.phone,msg);}} style={{ background:"#25D366", border:"none", borderRadius:8, padding:"4px 10px", color:"white", fontSize:11, fontWeight:700, cursor:"pointer" }}>WA</button>}
+                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                            <span style={{ fontSize:11, fontWeight:700, color:meta.color }}>{labelText}</span>
+                            {dog.phone && ["expired","used","urgent","expiring"].includes(st) && (
+                              <button onClick={e=>{e.stopPropagation();const msg="Hola "+dog.owner+"! El paquete de *"+dog.name+"* "+( ["expired","used"].includes(st)?"ha vencido/se agotó":"vence pronto")+". ¿Te gustaría renovarlo? 🐾";openWA(dog.phone,msg);}} style={{ background:"#25D366", border:"none", borderRadius:8, padding:"4px 10px", color:"white", fontSize:11, fontWeight:700, cursor:"pointer" }}>WA</button>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </Card>
               );
             })()}
