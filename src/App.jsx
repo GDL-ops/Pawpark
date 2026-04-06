@@ -645,8 +645,11 @@ function NewPackageForm({ dark, dog, onSave }) {
   const price = getPkgPrice(visits, hours);
   const today = new Date().toISOString().slice(0,10);
 
+  const today = new Date().toISOString().slice(0,10);
+  const [startDate, setStartDate] = useState(today);
+
   const save = () => {
-    const start = new Date();
+    const start = new Date(startDate + "T12:00:00");
     const end = new Date(start);
     end.setDate(end.getDate() + 31);
     onSave({
@@ -682,6 +685,12 @@ function NewPackageForm({ dark, dog, onSave }) {
             </button>
           ))}
         </div>
+      </div>
+      <div>
+        <Lbl dark={dark}>FECHA DE INICIO</Lbl>
+        <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}
+          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1.5px solid "+t.bord, fontSize:13, background:t.surf, color:t.text, outline:"none", boxSizing:"border-box" }} />
+        <div style={{ fontSize:10, color:t.text3, marginTop:4 }}>Por defecto: hoy. Cambia si el paquete inicia en otra fecha.</div>
       </div>
       <div style={{ padding:"12px 16px", borderRadius:12, background:t.accBg, border:"1px solid "+t.acc+"40", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div>
