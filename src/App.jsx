@@ -1806,20 +1806,18 @@ export default function PawPark() {
             </div>
             {isAdmin && incompleteCount > 0 && (
               <Card dark={dark} style={{ border:"2px solid " + t.acc + "30" }}>
-                <div onClick={() => setShowResp(v => !v)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
+                <div onClick={() => setShowResp(v=>!v)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
                   <div style={{ fontWeight:800, fontSize:14, color:t.text }}>⚠ Responsivas pendientes ({incompleteCount})</div>
                   <span style={{ fontSize:12, color:t.acc, fontWeight:700 }}>{showResp ? "▲ Ocultar" : "▼ Ver"}</span>
                 </div>
-                {showResp && (
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:9, marginTop:12 }}>
-                    {dogs.filter(d=>pmiss(d).length>0).slice(0,4).map(dog => (
-                      <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 13px", borderRadius:11, border:"1.5px solid " + t.acc + "30", background:t.accBg, cursor:"pointer" }}>
-                        <DogAvatar dog={dog} size={32} /><div><div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dog.name}</div><div style={{ fontSize:10, color:t.acc }}>Falta: {pmiss(dog).join(", ")}</div></div>
-                      </div>
-                    ))}
-                    {incompleteCount > 4 && <div style={{ fontSize:11, color:t.text3, padding:"8px 0", fontWeight:600 }}>...y {incompleteCount-4} más</div>}
-                  </div>
-                )}
+                {showResp && <div style={{ display:"flex", flexWrap:"wrap", gap:9, marginTop:12 }}>
+                  {dogs.filter(d=>pmiss(d).length>0).slice(0,4).map(dog => (
+                    <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 13px", borderRadius:11, border:"1.5px solid " + t.acc + "30", background:t.accBg, cursor:"pointer" }}>
+                      <DogAvatar dog={dog} size={32} /><div><div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dog.name}</div><div style={{ fontSize:10, color:t.acc }}>Falta: {pmiss(dog).join(", ")}</div></div>
+                    </div>
+                  ))}
+                  {incompleteCount > 4 && <div style={{ width:"100%", fontSize:11, color:t.text3, fontWeight:600, paddingTop:4 }}>...y {incompleteCount-4} más</div>}
+                </div>}
               </Card>
             )}
 
@@ -1905,19 +1903,14 @@ export default function PawPark() {
               );
             })()}
             <Card dark={dark}>
-              <div onClick={() => setShowVac(v => !v)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
+              <div onClick={() => setShowVac(v=>!v)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
                 <div style={{ fontWeight:800, fontSize:14, color:t.text }}>💉 Vacunas que necesitan atención ({vacAlerts.length})</div>
                 <span style={{ fontSize:12, color:t.acc, fontWeight:700 }}>{showVac ? "▲ Ocultar" : "▼ Ver"}</span>
               </div>
-              {showVac && (
-              <div style={{ marginTop:14 }}>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-                <div style={{ fontWeight:800, fontSize:14, color:t.text }}>Vacunas que necesitan atención</div>
-                {vacAlerts.length > 0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"2px 11px", fontSize:12, fontWeight:700, border:"1px solid " + t.acc + "30" }}>{vacAlerts.length}</span>}
-              </div>
-              {vacAlerts.length === 0 ? (
+              {showVac && vacAlerts.length === 0 && (
                 <div style={{ textAlign:"center", padding:"26px 0", color:t.text3 }}><div style={{ fontSize:36 }}>🎉</div><div style={{ fontWeight:700, fontSize:14, marginTop:7 }}>Todo en orden!</div></div>
-              ) : vacAlerts.map(dog => {
+              )}
+              {showVac && vacAlerts.length > 0 && vacAlerts.slice(0,4).map(dog => {
                 const cv = VACCINES.filter(v => ["expired","soon"].includes(gvs(dog.vaccinations?.[v.id])));
                 const vs = ovs(dog); const vm = VST[vs];
                 return (
@@ -1937,8 +1930,6 @@ export default function PawPark() {
                   </div>
                 );
               })}
-              </div>
-              )}
             </Card>
             {dogs.length > 0 && (
               <Card dark={dark}>
@@ -1948,7 +1939,6 @@ export default function PawPark() {
                 </div>
               </Card>
             )}
-            {isAdmin && <AnalyticsPanel dark={dark} dogs={dogs} sessions={sessions} />}
           </div>
         )}
 
@@ -2020,7 +2010,7 @@ export default function PawPark() {
 
         {/* Detail */}
         {view === "detail" && selDog && <DetailView key={selDog.id} dog={dogs.find(d=>d.id===selDog.id)||selDog} dark={dark} isAdmin={isAdmin} currentUser={currentUser} t={t} onBack={()=>setView("list")} onEdit={d=>{setEditDog(d);setView("form");}} onDelete={handleDelete}/>}
-        {false && false && (() => {
+        {false && selDog && (() => {
           const dog = dogs.find(d=>d.id===selDog.id) || selDog;
           const miss = pmiss(dog);
           const sv = dog.care?.supervisionLevel ? SUPV[dog.care.supervisionLevel] : null;
