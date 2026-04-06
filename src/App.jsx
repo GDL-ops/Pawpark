@@ -1896,8 +1896,8 @@ export default function PawPark() {
             {isAdmin && incompleteCount > 0 && (
               <Card dark={dark} style={{ border:"2px solid " + t.acc + "30" }}>
                 <div style={{ fontWeight:800, fontSize:14, color:t.text, marginBottom:13 }}>Responsivas pendientes</div>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:9 }}>
-                  {dogs.filter(d=>pmiss(d).length>0).slice(0,4).map(dog => (
+                <div style={{ maxHeight:220, overflowY:"auto", display:"flex", flexWrap:"wrap", gap:9, WebkitOverflowScrolling:"touch" }}>
+                  {dogs.filter(d=>pmiss(d).length>0).map(dog => (
                     <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 13px", borderRadius:11, border:"1.5px solid " + t.acc + "30", background:t.accBg, cursor:"pointer" }}>
                       <DogAvatar dog={dog} size={32} /><div><div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dog.name}</div><div style={{ fontSize:10, color:t.acc }}>Falta: {pmiss(dog).join(", ")}</div></div>
                     </div>
@@ -1994,7 +1994,7 @@ export default function PawPark() {
               </div>
               {vacAlerts.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"26px 0", color:t.text3 }}><div style={{ fontSize:36 }}>🎉</div><div style={{ fontWeight:700, fontSize:14, marginTop:7 }}>Todo en orden!</div></div>
-              ) : vacAlerts.slice(0,4).map(dog => {
+              ) : <div style={{ maxHeight:320, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>{vacAlerts.map(dog => {
                 const cv = VACCINES.filter(v => ["expired","soon"].includes(gvs(dog.vaccinations?.[v.id])));
                 const vs = ovs(dog); const vm = VST[vs];
                 return (
@@ -2013,7 +2013,7 @@ export default function PawPark() {
                     </div>
                   </div>
                 );
-              })}
+              })}</div>}
             </Card>
             {dogs.length > 0 && (
               <Card dark={dark}>
