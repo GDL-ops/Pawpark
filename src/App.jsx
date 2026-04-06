@@ -1962,13 +1962,18 @@ export default function PawPark() {
                   <div style={{ fontWeight:800, fontSize:14, color:t.text }}>⚠ Responsivas pendientes ({incompleteCount})</div>
                   <span style={{ fontSize:13, color:t.acc, fontWeight:700 }}>{showResp ? "▲ Ocultar" : "▼ Ver"}</span>
                 </div>
-                {showResp && <div style={{ display:"flex", flexWrap:"wrap", gap:9, marginTop:13 }}>
-                  {dogs.filter(d=>pmiss(d).length>0).map(dog => (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:9, marginTop:13 }}>
+                  {dogs.filter(d=>pmiss(d).length>0).slice(0, showResp ? 999 : 4).map(dog => (
                     <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 13px", borderRadius:11, border:"1.5px solid " + t.acc + "30", background:t.accBg, cursor:"pointer" }}>
                       <DogAvatar dog={dog} size={32} /><div><div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dog.name}</div><div style={{ fontSize:10, color:t.acc }}>Falta: {pmiss(dog).join(", ")}</div></div>
                     </div>
                   ))}
-                </div>}
+                  {dogs.filter(d=>pmiss(d).length>0).length > 4 && (
+                    <button onClick={() => setShowResp(v=>!v)} style={{ padding:"8px 16px", borderRadius:10, border:"1.5px solid "+t.acc+"40", background:"transparent", color:t.acc, fontWeight:700, fontSize:12, cursor:"pointer" }}>
+                      {showResp ? "Ver menos ▲" : "Ver todos (" + dogs.filter(d=>pmiss(d).length>0).length + ") ▼"}
+                    </button>
+                  )}
+                </div>
               </Card>
             )}
 
@@ -2059,13 +2064,14 @@ export default function PawPark() {
                 <div style={{ fontWeight:800, fontSize:14, color:t.text }}>💉 Vacunas que necesitan atención ({vacAlerts.length})</div>
                 <span style={{ fontSize:13, color:t.acc, fontWeight:700 }}>{showVac ? "▲ Ocultar" : "▼ Ver"}</span>
               </div>
-              {showVac && <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:14, marginBottom:14 }}>
+              {showVac && <div style={{ marginTop:14 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
                 <div style={{ fontWeight:800, fontSize:14, color:t.text }}>Vacunas que necesitan atención</div>
                 {vacAlerts.length > 0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"2px 11px", fontSize:12, fontWeight:700, border:"1px solid " + t.acc + "30" }}>{vacAlerts.length}</span>}
               </div>
               {vacAlerts.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"26px 0", color:t.text3 }}><div style={{ fontSize:36 }}>🎉</div><div style={{ fontWeight:700, fontSize:14, marginTop:7 }}>Todo en orden!</div></div>
-              ) : vacAlerts.map(dog => {
+              ) : vacAlerts.slice(0, showVac ? 999 : 4).map(dog => {
                 const cv = VACCINES.filter(v => ["expired","soon"].includes(gvs(dog.vaccinations?.[v.id])));
                 const vs = ovs(dog); const vm = VST[vs];
                 return (
