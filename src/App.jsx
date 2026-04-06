@@ -1629,6 +1629,93 @@ function DaycarePanel({ dark, currentUser, dogs }) {
   );
 }
 
+
+// ---- Analytics Panel --------------------------------------------------------
+function AnalyticsPanel({ dark, dogs, sessions }) {
+  const t = getT(dark);
+  const [period, setPeriod] = useState("month");
+  const now = new Date();
+  const done = sessions.filter(s => {
+    if (s.status !== "done") return false;
+    if (period === "month") {
+      const d = new Date(parseInt(s.checkIn)||s.checkIn);
+      return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+    }
+    return true;
+  });
+  const total = done.length;
+  const avgHrs = total > 0 ? (done.reduce((a,s)=>a+(parseInt(s.totalMs)||0),0)/total/3600000).toFixed(1) : 0;
+  const revenue = done.filter(s=>!s.hasPackage).reduce((a,s)=>a+(parseInt(s.rangePrice)||0),0);
+  const pkgPct = total > 0 ? Math.round(done.filter(s=>s.hasPackage).length/total*100) : 0;
+  const dayCount = [0,0,0,0,0,0,0];
+  const dayNames = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  done.forEach(s => { const d = new Date(parseInt(s.checkIn)||s.checkIn); dayCount[d.getDay()]++; });
+  const maxDay = Math.max(...dayCount) || 1;
+  const visitMap = {};
+  done.forEach(s => {
+    if (!s.dogId) return;
+    if (!visitMap[s.dogId]) visitMap[s.dogId] = { name:s.dogName, owner:s.ownerName, visits:0, ms:0, rev:0 };
+    visitMap[s.dogId].visits++;
+    visitMap[s.dogId].ms += parseInt(s.totalMs)||0;
+    if (!s.hasPackage) visitMap[s.dogId].rev += parseInt(s.rangePrice)||0;
+  });
+  const ranking = Object.values(visitMap).sort((a,b)=>b.visits-a.visits).slice(0,5);
+  return (
+    <Card dark={dark}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+        <div style={{ fontWeight:800, fontSize:15, color:t.text }}>📊 Analítica</div>
+        <div style={{ display:"flex", gap:6 }}>
+          {[{id:"month",label:"Este mes"},{id:"all",label:"Todo"}].map(p=>(
+            <button key={p.id} onClick={()=>setPeriod(p.id)} style={{ padding:"5px 12px", borderRadius:8, border:"none", fontWeight:700, fontSize:11, cursor:"pointer", background:period===p.id?t.acc:t.surf2, color:period===p.id?t.accD:t.text2 }}>{p.label}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:16 }}>
+        {[["VISITAS",total,t.acc],["PROM HRS",avgHrs+"h",t.acc],["INGRESOS","$"+revenue.toLocaleString(),"#143B31"],["CON PKG",pkgPct+"%","#C1712C"]].map(([l,v,c])=>(
+          <div key={l} style={{ background:t.surf2, borderRadius:10, padding:"10px 8px", textAlign:"center", border:"1px solid "+t.bord }}>
+            <div style={{ fontSize:18, fontWeight:900, color:c }}>{v}</div>
+            <div style={{ fontSize:9, color:t.text3, fontWeight:700, marginTop:2 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginBottom:16 }}>
+        <div style={{ fontSize:10, fontWeight:800, color:t.text3, marginBottom:8, letterSpacing:"0.08em" }}>VISITAS POR DÍA</div>
+        <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:56 }}>
+          {dayCount.map((count,i)=>(
+            <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+              <div style={{ width:"100%", borderRadius:4, background:count===Math.max(...dayCount)?"linear-gradient(180deg,#AACC71,#143B31)":t.surf2, height:Math.max(4,(count/maxDay)*40)+"px" }}/>
+              <div style={{ fontSize:9, color:t.text3, fontWeight:700 }}>{dayNames[i]}</div>
+              <div style={{ fontSize:9, color:t.text2 }}>{count}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {ranking.length > 0 && (
+        <div>
+          <div style={{ fontSize:10, fontWeight:800, color:t.text3, marginBottom:8, letterSpacing:"0.08em" }}>🏆 MÁS FRECUENTES</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {ranking.map((d,i)=>(
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:10, background:t.surf2, border:"1px solid "+t.bord }}>
+                <div style={{ width:22, height:22, borderRadius:"50%", background:i===0?"linear-gradient(135deg,#F8D061,#C1712C)":i===1?"linear-gradient(135deg,#D0D0D0,#888)":i===2?"linear-gradient(135deg,#CD7F32,#8B4513)":t.surf, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:900, color:i<3?"white":t.text3, flexShrink:0 }}>
+                  {i<3?["🥇","🥈","🥉"][i]:i+1}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{d.name}</div>
+                  <div style={{ fontSize:11, color:t.text2 }}>{d.owner}</div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontWeight:800, fontSize:13, color:t.acc }}>{d.visits} visitas</div>
+                  <div style={{ fontSize:10, color:t.text3 }}>{(d.ms/3600000).toFixed(1)}h · ${d.rev.toLocaleString()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ---- Main App ---------------------------------------------------------------
 export default function PawPark() {
   const [dark, setDark] = useState(false);
@@ -1641,8 +1728,7 @@ export default function PawPark() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [showUM, setShowUM] = useState(false);
-  const [showVac, setShowVac] = useState(false);
-  const [showResp, setShowResp] = useState(false);
+  const [sessions, setSessions] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const t = getT(dark);
 
@@ -1651,6 +1737,9 @@ export default function PawPark() {
     // Load dark mode preference from localStorage (solo preferencia visual)
     try { const dm = localStorage.getItem("pp_dark"); if (dm) setDark(JSON.parse(dm)); } catch {}
 
+    const unsubSessions = onSnapshot(collection(db, "daycare_sessions"), snap => {
+      setSessions(snap.docs.map(d => ({ id:d.id, ...d.data() })));
+    });
     // Real-time listener for dogs
     const unsubDogs = onSnapshot(collection(db, "dogs"), snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1673,7 +1762,7 @@ export default function PawPark() {
       }
     });
 
-    return () => { unsubDogs(); unsubUsers(); };
+    return () => { unsubDogs(); unsubUsers(); unsubSessions(); };
   }, []);
 
   const saveDogs = useCallback(async nd => {
@@ -1806,18 +1895,14 @@ export default function PawPark() {
             </div>
             {isAdmin && incompleteCount > 0 && (
               <Card dark={dark} style={{ border:"2px solid " + t.acc + "30" }}>
-                <div onClick={() => setShowResp(v=>!v)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
-                  <div style={{ fontWeight:800, fontSize:14, color:t.text }}>⚠ Responsivas pendientes ({incompleteCount})</div>
-                  <span style={{ fontSize:12, color:t.acc, fontWeight:700 }}>{showResp ? "▲ Ocultar" : "▼ Ver"}</span>
-                </div>
-                {showResp && <div style={{ display:"flex", flexWrap:"wrap", gap:9, marginTop:12 }}>
+                <div style={{ fontWeight:800, fontSize:14, color:t.text, marginBottom:13 }}>Responsivas pendientes</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:9 }}>
                   {dogs.filter(d=>pmiss(d).length>0).slice(0,4).map(dog => (
                     <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 13px", borderRadius:11, border:"1.5px solid " + t.acc + "30", background:t.accBg, cursor:"pointer" }}>
                       <DogAvatar dog={dog} size={32} /><div><div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dog.name}</div><div style={{ fontSize:10, color:t.acc }}>Falta: {pmiss(dog).join(", ")}</div></div>
                     </div>
                   ))}
-                  {incompleteCount > 4 && <div style={{ width:"100%", fontSize:11, color:t.text3, fontWeight:600, paddingTop:4 }}>...y {incompleteCount-4} más</div>}
-                </div>}
+                </div>
               </Card>
             )}
 
@@ -1903,14 +1988,13 @@ export default function PawPark() {
               );
             })()}
             <Card dark={dark}>
-              <div onClick={() => setShowVac(v=>!v)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
-                <div style={{ fontWeight:800, fontSize:14, color:t.text }}>💉 Vacunas que necesitan atención ({vacAlerts.length})</div>
-                <span style={{ fontSize:12, color:t.acc, fontWeight:700 }}>{showVac ? "▲ Ocultar" : "▼ Ver"}</span>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                <div style={{ fontWeight:800, fontSize:14, color:t.text }}>Vacunas que necesitan atencion</div>
+                {vacAlerts.length > 0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"2px 11px", fontSize:12, fontWeight:700, border:"1px solid " + t.acc + "30" }}>{vacAlerts.length}</span>}
               </div>
-              {showVac && vacAlerts.length === 0 && (
+              {vacAlerts.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"26px 0", color:t.text3 }}><div style={{ fontSize:36 }}>🎉</div><div style={{ fontWeight:700, fontSize:14, marginTop:7 }}>Todo en orden!</div></div>
-              )}
-              {showVac && vacAlerts.length > 0 && vacAlerts.slice(0,4).map(dog => {
+              ) : vacAlerts.slice(0,4).map(dog => {
                 const cv = VACCINES.filter(v => ["expired","soon"].includes(gvs(dog.vaccinations?.[v.id])));
                 const vs = ovs(dog); const vm = VST[vs];
                 return (
@@ -1939,6 +2023,7 @@ export default function PawPark() {
                 </div>
               </Card>
             )}
+            {isAdmin && <AnalyticsPanel dark={dark} dogs={dogs} sessions={sessions} />}
           </div>
         )}
 
