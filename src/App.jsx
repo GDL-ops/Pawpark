@@ -1629,6 +1629,152 @@ function DaycarePanel({ dark, currentUser, dogs }) {
   );
 }
 
+
+// ---- Analytics Panel --------------------------------------------------------
+function AnalyticsPanel({ dark, dogs, sessions }) {
+  const t = getT(dark);
+  const [period, setPeriod] = useState("month"); // month | all
+
+  const now = new Date();
+  const isInPeriod = (ts) => {
+    if (!ts) return false;
+    const d = new Date(parseInt(ts) || ts);
+    if (period === "month") {
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }
+    return true;
+  };
+
+  // All completed sessions
+  const doneSessions = sessions.filter(s => s.status === "done" && isInPeriod(s.checkIn));
+
+  // 1. Ranking - most frequent visitors
+  const visitMap = {};
+  doneSessions.forEach(s => {
+    if (!s.dogId) return;
+    if (!visitMap[s.dogId]) visitMap[s.dogId] = { dogName: s.dogName, ownerName: s.ownerName, visits: 0, totalMs: 0, revenue: 0, pkgVisits: 0 };
+    visitMap[s.dogId].visits++;
+    visitMap[s.dogId].totalMs += parseInt(s.totalMs) || 0;
+    if (!s.hasPackage) visitMap[s.dogId].revenue += parseInt(s.rangePrice) || 0;
+    if (s.hasPackage) visitMap[s.dogId].pkgVisits++;
+  });
+  const ranking = Object.values(visitMap).sort((a,b) => b.visits - a.visits).slice(0,10);
+
+  // 2. Day of week distribution
+  const dayCount = [0,0,0,0,0,0,0];
+  const dayNames = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  doneSessions.forEach(s => {
+    const d = new Date(parseInt(s.checkIn) || s.checkIn);
+    dayCount[d.getDay()]++;
+  });
+  const maxDay = Math.max(...dayCount) || 1;
+
+  // 3. Monthly revenue (last 6 months)
+  const monthMap = {};
+  const monthNames = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  sessions.filter(s => s.status === "done").forEach(s => {
+    const d = new Date(parseInt(s.checkIn) || s.checkIn);
+    const key = d.getFullYear() + "-" + String(d.getMonth()).padStart(2,"0");
+    const label = monthNames[d.getMonth()] + " " + String(d.getFullYear()).slice(2);
+    if (!monthMap[key]) monthMap[key] = { label, revenue: 0, visits: 0 };
+    monthMap[key].visits++;
+    if (!s.hasPackage) monthMap[key].revenue += parseInt(s.rangePrice) || 0;
+  });
+  const months = Object.entries(monthMap).sort((a,b) => a[0].localeCompare(b[0])).slice(-6).map(([,v]) => v);
+  const maxRevenue = Math.max(...months.map(m => m.revenue)) || 1;
+
+  // 4. General stats
+  const totalVisits = doneSessions.length;
+  const avgHrs = totalVisits > 0 ? (doneSessions.reduce((a,s) => a + (parseInt(s.totalMs)||0), 0) / totalVisits / 3600000).toFixed(1) : 0;
+  const totalRevenue = doneSessions.filter(s => !s.hasPackage).reduce((a,s) => a + (parseInt(s.rangePrice)||0), 0);
+  const pkgPct = totalVisits > 0 ? Math.round(doneSessions.filter(s => s.hasPackage).length / totalVisits * 100) : 0;
+
+  if (doneSessions.length === 0 && sessions.filter(s=>s.status==="done").length === 0) return null;
+
+  return (
+    <Card dark={dark} style={{ border:"2px solid "+t.acc+"20" }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
+        <div style={{ fontWeight:800, fontSize:15, color:t.text }}>📊 Analítica</div>
+        <div style={{ display:"flex", gap:6 }}>
+          {[{id:"month",label:"Este mes"},{id:"all",label:"Todo"}].map(p => (
+            <button key={p.id} onClick={() => setPeriod(p.id)} style={{ padding:"5px 12px", borderRadius:8, border:"none", fontWeight:700, fontSize:11, cursor:"pointer", background:period===p.id?t.acc:t.surf2, color:period===p.id?t.accD:t.text2 }}>{p.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Summary stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:18 }}>
+        {[
+          ["VISITAS", totalVisits, t.acc],
+          ["PROM HRS", avgHrs+"h", t.acc],
+          ["INGRESOS", "$"+totalRevenue.toLocaleString(), "#143B31"],
+          ["CON PKG", pkgPct+"%", "#C1712C"],
+        ].map(([l,v,c]) => (
+          <div key={l} style={{ background:t.surf2, borderRadius:11, padding:"11px 8px", textAlign:"center", border:"1px solid "+t.bord }}>
+            <div style={{ fontSize:18, fontWeight:900, color:c, lineHeight:1 }}>{v}</div>
+            <div style={{ fontSize:9, color:t.text3, fontWeight:700, marginTop:3, letterSpacing:"0.05em" }}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Day of week chart */}
+      <div style={{ marginBottom:18 }}>
+        <div style={{ fontSize:11, fontWeight:800, color:t.text3, letterSpacing:"0.08em", marginBottom:10 }}>VISITAS POR DÍA</div>
+        <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:60 }}>
+          {dayCount.map((count, i) => (
+            <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+              <div style={{ width:"100%", borderRadius:4, background: count===Math.max(...dayCount)?"linear-gradient(180deg,#AACC71,#143B31)":t.surf2, height: Math.max(4, (count/maxDay)*44)+"px", transition:"height 0.3s" }} />
+              <div style={{ fontSize:9, color:t.text3, fontWeight:700 }}>{dayNames[i]}</div>
+              <div style={{ fontSize:9, color:t.text2, fontWeight:600 }}>{count}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Monthly revenue chart */}
+      {months.length > 1 && (
+        <div style={{ marginBottom:18 }}>
+          <div style={{ fontSize:11, fontWeight:800, color:t.text3, letterSpacing:"0.08em", marginBottom:10 }}>INGRESOS POR MES</div>
+          <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:70 }}>
+            {months.map((m, i) => (
+              <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                <div style={{ fontSize:8, color:t.text3, fontWeight:700 }}>${(m.revenue/1000).toFixed(1)}k</div>
+                <div style={{ width:"100%", borderRadius:4, background: i===months.length-1?"linear-gradient(180deg,#AACC71,#143B31)":t.surf2, height: Math.max(4,(m.revenue/maxRevenue)*44)+"px", transition:"height 0.3s" }} />
+                <div style={{ fontSize:9, color:t.text3, fontWeight:700 }}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ranking */}
+      {ranking.length > 0 && (
+        <div>
+          <div style={{ fontSize:11, fontWeight:800, color:t.text3, letterSpacing:"0.08em", marginBottom:10 }}>🏆 MÁS FRECUENTES</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+            {ranking.map((d, i) => (
+              <div key={d.dogId} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:11, background:t.surf2, border:"1px solid "+t.bord }}>
+                <div style={{ width:24, height:24, borderRadius:"50%", background: i===0?"linear-gradient(135deg,#F8D061,#C1712C)":i===1?"linear-gradient(135deg,#D0D0D0,#888)":i===2?"linear-gradient(135deg,#CD7F32,#8B4513)":t.surf, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:900, color: i<3?"white":t.text3, flexShrink:0 }}>
+                  {i<3 ? ["🥇","🥈","🥉"][i] : i+1}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{d.dogName}</div>
+                  <div style={{ fontSize:11, color:t.text2 }}>{d.ownerName}</div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontWeight:800, fontSize:14, color:t.acc }}>{d.visits} visitas</div>
+                  <div style={{ fontSize:10, color:t.text3 }}>{(d.totalMs/3600000).toFixed(1)}h · ${d.revenue.toLocaleString()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ---- Main App ---------------------------------------------------------------
 export default function PawPark() {
   const [dark, setDark] = useState(false);
@@ -1642,12 +1788,18 @@ export default function PawPark() {
   const [filter, setFilter] = useState("all");
   const [showUM, setShowUM] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [sessions, setSessions] = useState([]);
   const t = getT(dark);
 
   // Firebase: real-time listeners
   useEffect(() => {
     // Load dark mode preference from localStorage (solo preferencia visual)
     try { const dm = localStorage.getItem("pp_dark"); if (dm) setDark(JSON.parse(dm)); } catch {}
+
+    // Real-time listener for daycare sessions
+    const unsubSessions = onSnapshot(collection(db, "daycare_sessions"), snap => {
+      setSessions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
 
     // Real-time listener for dogs
     const unsubDogs = onSnapshot(collection(db, "dogs"), snap => {
@@ -1671,7 +1823,7 @@ export default function PawPark() {
       }
     });
 
-    return () => { unsubDogs(); unsubUsers(); };
+    return () => { unsubDogs(); unsubUsers(); unsubSessions(); };
   }, []);
 
   const saveDogs = useCallback(async nd => {
