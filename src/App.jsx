@@ -2084,6 +2084,7 @@ export default function PawPark() {
                 </div>
               </Card>
             )}
+            <AnalyticsPanel dark={dark} dogs={dogs} sessions={sessions} />
           </div>
         )}
 
