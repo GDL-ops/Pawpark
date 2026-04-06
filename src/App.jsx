@@ -1273,7 +1273,12 @@ function PublicDaycarePanel() {
                 <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:6, overflow:"hidden", marginBottom:8 }}>
                   <div style={{ height:"100%", borderRadius:99, background: isPackage ? "linear-gradient(90deg,#C1712C,#F8D061)" : "linear-gradient(90deg,#143B31,#AACC71)", width:pct+"%", transition:"width 1s linear" }} />
                 </div>
-                <div style={{ fontSize:12, color:"rgba(242,238,221,0.6)", fontWeight:600 }}>{range.label} · ${range.price}</div>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ fontSize:12, color:"rgba(242,238,221,0.6)", fontWeight:600 }}>{range.label} · ${range.price}</div>
+                  <div style={{ fontSize:10, color:"rgba(242,238,221,0.35)", fontWeight:600 }}>
+                    Ingreso {new Date(s.checkIn).toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"})}
+                  </div>
+                </div>
               </div>
             );
           })}
