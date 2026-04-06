@@ -1629,152 +1629,6 @@ function DaycarePanel({ dark, currentUser, dogs }) {
   );
 }
 
-
-// ---- Analytics Panel --------------------------------------------------------
-function AnalyticsPanel({ dark, dogs, sessions }) {
-  const t = getT(dark);
-  const [period, setPeriod] = useState("month"); // month | all
-
-  const now = new Date();
-  const isInPeriod = (ts) => {
-    if (!ts) return false;
-    const d = new Date(parseInt(ts) || ts);
-    if (period === "month") {
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }
-    return true;
-  };
-
-  // All completed sessions
-  const doneSessions = sessions.filter(s => s.status === "done" && isInPeriod(s.checkIn));
-
-  // 1. Ranking - most frequent visitors
-  const visitMap = {};
-  doneSessions.forEach(s => {
-    if (!s.dogId) return;
-    if (!visitMap[s.dogId]) visitMap[s.dogId] = { dogName: s.dogName, ownerName: s.ownerName, visits: 0, totalMs: 0, revenue: 0, pkgVisits: 0 };
-    visitMap[s.dogId].visits++;
-    visitMap[s.dogId].totalMs += parseInt(s.totalMs) || 0;
-    if (!s.hasPackage) visitMap[s.dogId].revenue += parseInt(s.rangePrice) || 0;
-    if (s.hasPackage) visitMap[s.dogId].pkgVisits++;
-  });
-  const ranking = Object.values(visitMap).sort((a,b) => b.visits - a.visits).slice(0,10);
-
-  // 2. Day of week distribution
-  const dayCount = [0,0,0,0,0,0,0];
-  const dayNames = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
-  doneSessions.forEach(s => {
-    const d = new Date(parseInt(s.checkIn) || s.checkIn);
-    dayCount[d.getDay()]++;
-  });
-  const maxDay = Math.max(...dayCount) || 1;
-
-  // 3. Monthly revenue (last 6 months)
-  const monthMap = {};
-  const monthNames = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-  sessions.filter(s => s.status === "done").forEach(s => {
-    const d = new Date(parseInt(s.checkIn) || s.checkIn);
-    const key = d.getFullYear() + "-" + String(d.getMonth()).padStart(2,"0");
-    const label = monthNames[d.getMonth()] + " " + String(d.getFullYear()).slice(2);
-    if (!monthMap[key]) monthMap[key] = { label, revenue: 0, visits: 0 };
-    monthMap[key].visits++;
-    if (!s.hasPackage) monthMap[key].revenue += parseInt(s.rangePrice) || 0;
-  });
-  const months = Object.entries(monthMap).sort((a,b) => a[0].localeCompare(b[0])).slice(-6).map(([,v]) => v);
-  const maxRevenue = Math.max(...months.map(m => m.revenue)) || 1;
-
-  // 4. General stats
-  const totalVisits = doneSessions.length;
-  const avgHrs = totalVisits > 0 ? (doneSessions.reduce((a,s) => a + (parseInt(s.totalMs)||0), 0) / totalVisits / 3600000).toFixed(1) : 0;
-  const totalRevenue = doneSessions.filter(s => !s.hasPackage).reduce((a,s) => a + (parseInt(s.rangePrice)||0), 0);
-  const pkgPct = totalVisits > 0 ? Math.round(doneSessions.filter(s => s.hasPackage).length / totalVisits * 100) : 0;
-
-  // Always show panel to admin even if no sessions yet
-
-  return (
-    <Card dark={dark} style={{ border:"2px solid "+t.acc+"20" }}>
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
-        <div style={{ fontWeight:800, fontSize:15, color:t.text }}>📊 Analítica</div>
-        <div style={{ display:"flex", gap:6 }}>
-          {[{id:"month",label:"Este mes"},{id:"all",label:"Todo"}].map(p => (
-            <button key={p.id} onClick={() => setPeriod(p.id)} style={{ padding:"5px 12px", borderRadius:8, border:"none", fontWeight:700, fontSize:11, cursor:"pointer", background:period===p.id?t.acc:t.surf2, color:period===p.id?t.accD:t.text2 }}>{p.label}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Summary stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:18 }}>
-        {[
-          ["VISITAS", totalVisits, t.acc],
-          ["PROM HRS", avgHrs+"h", t.acc],
-          ["INGRESOS", "$"+totalRevenue.toLocaleString(), "#143B31"],
-          ["CON PKG", pkgPct+"%", "#C1712C"],
-        ].map(([l,v,c]) => (
-          <div key={l} style={{ background:t.surf2, borderRadius:11, padding:"11px 8px", textAlign:"center", border:"1px solid "+t.bord }}>
-            <div style={{ fontSize:18, fontWeight:900, color:c, lineHeight:1 }}>{v}</div>
-            <div style={{ fontSize:9, color:t.text3, fontWeight:700, marginTop:3, letterSpacing:"0.05em" }}>{l}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Day of week chart */}
-      <div style={{ marginBottom:18 }}>
-        <div style={{ fontSize:11, fontWeight:800, color:t.text3, letterSpacing:"0.08em", marginBottom:10 }}>VISITAS POR DÍA</div>
-        <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:60 }}>
-          {dayCount.map((count, i) => (
-            <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-              <div style={{ width:"100%", borderRadius:4, background: count===Math.max(...dayCount)?"linear-gradient(180deg,#AACC71,#143B31)":t.surf2, height: Math.max(4, (count/maxDay)*44)+"px", transition:"height 0.3s" }} />
-              <div style={{ fontSize:9, color:t.text3, fontWeight:700 }}>{dayNames[i]}</div>
-              <div style={{ fontSize:9, color:t.text2, fontWeight:600 }}>{count}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Monthly revenue chart */}
-      {months.length > 1 && (
-        <div style={{ marginBottom:18 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:t.text3, letterSpacing:"0.08em", marginBottom:10 }}>INGRESOS POR MES</div>
-          <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:70 }}>
-            {months.map((m, i) => (
-              <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-                <div style={{ fontSize:8, color:t.text3, fontWeight:700 }}>${(m.revenue/1000).toFixed(1)}k</div>
-                <div style={{ width:"100%", borderRadius:4, background: i===months.length-1?"linear-gradient(180deg,#AACC71,#143B31)":t.surf2, height: Math.max(4,(m.revenue/maxRevenue)*44)+"px", transition:"height 0.3s" }} />
-                <div style={{ fontSize:9, color:t.text3, fontWeight:700 }}>{m.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Ranking */}
-      {ranking.length > 0 && (
-        <div>
-          <div style={{ fontSize:11, fontWeight:800, color:t.text3, letterSpacing:"0.08em", marginBottom:10 }}>🏆 MÁS FRECUENTES</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
-            {ranking.map((d, i) => (
-              <div key={d.dogId} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:11, background:t.surf2, border:"1px solid "+t.bord }}>
-                <div style={{ width:24, height:24, borderRadius:"50%", background: i===0?"linear-gradient(135deg,#F8D061,#C1712C)":i===1?"linear-gradient(135deg,#D0D0D0,#888)":i===2?"linear-gradient(135deg,#CD7F32,#8B4513)":t.surf, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:900, color: i<3?"white":t.text3, flexShrink:0 }}>
-                  {i<3 ? ["🥇","🥈","🥉"][i] : i+1}
-                </div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{d.dogName}</div>
-                  <div style={{ fontSize:11, color:t.text2 }}>{d.ownerName}</div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontWeight:800, fontSize:14, color:t.acc }}>{d.visits} visitas</div>
-                  <div style={{ fontSize:10, color:t.text3 }}>{(d.totalMs/3600000).toFixed(1)}h · ${d.revenue.toLocaleString()}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
 // ---- Main App ---------------------------------------------------------------
 export default function PawPark() {
   const [dark, setDark] = useState(false);
@@ -1790,18 +1644,12 @@ export default function PawPark() {
   const [showVac, setShowVac] = useState(false);
   const [showResp, setShowResp] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [sessions, setSessions] = useState([]);
   const t = getT(dark);
 
   // Firebase: real-time listeners
   useEffect(() => {
     // Load dark mode preference from localStorage (solo preferencia visual)
     try { const dm = localStorage.getItem("pp_dark"); if (dm) setDark(JSON.parse(dm)); } catch {}
-
-    // Real-time listener for daycare sessions
-    const unsubSessions = onSnapshot(collection(db, "daycare_sessions"), snap => {
-      setSessions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
 
     // Real-time listener for dogs
     const unsubDogs = onSnapshot(collection(db, "dogs"), snap => {
@@ -1825,7 +1673,7 @@ export default function PawPark() {
       }
     });
 
-    return () => { unsubDogs(); unsubUsers(); unsubSessions(); };
+    return () => { unsubDogs(); unsubUsers(); };
   }, []);
 
   const saveDogs = useCallback(async nd => {
@@ -1960,20 +1808,18 @@ export default function PawPark() {
               <Card dark={dark} style={{ border:"2px solid " + t.acc + "30" }}>
                 <div onClick={() => setShowResp(v => !v)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
                   <div style={{ fontWeight:800, fontSize:14, color:t.text }}>⚠ Responsivas pendientes ({incompleteCount})</div>
-                  <span style={{ fontSize:13, color:t.acc, fontWeight:700 }}>{showResp ? "▲ Ocultar" : "▼ Ver"}</span>
+                  <span style={{ fontSize:12, color:t.acc, fontWeight:700 }}>{showResp ? "▲ Ocultar" : "▼ Ver"}</span>
                 </div>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:9, marginTop:13 }}>
-                  {dogs.filter(d=>pmiss(d).length>0).slice(0, showResp ? 999 : 4).map(dog => (
-                    <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 13px", borderRadius:11, border:"1.5px solid " + t.acc + "30", background:t.accBg, cursor:"pointer" }}>
-                      <DogAvatar dog={dog} size={32} /><div><div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dog.name}</div><div style={{ fontSize:10, color:t.acc }}>Falta: {pmiss(dog).join(", ")}</div></div>
-                    </div>
-                  ))}
-                  {dogs.filter(d=>pmiss(d).length>0).length > 4 && (
-                    <button onClick={() => setShowResp(v=>!v)} style={{ padding:"8px 16px", borderRadius:10, border:"1.5px solid "+t.acc+"40", background:"transparent", color:t.acc, fontWeight:700, fontSize:12, cursor:"pointer" }}>
-                      {showResp ? "Ver menos ▲" : "Ver todos (" + dogs.filter(d=>pmiss(d).length>0).length + ") ▼"}
-                    </button>
-                  )}
-                </div>
+                {showResp && (
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:9, marginTop:12 }}>
+                    {dogs.filter(d=>pmiss(d).length>0).slice(0,4).map(dog => (
+                      <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 13px", borderRadius:11, border:"1.5px solid " + t.acc + "30", background:t.accBg, cursor:"pointer" }}>
+                        <DogAvatar dog={dog} size={32} /><div><div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dog.name}</div><div style={{ fontSize:10, color:t.acc }}>Falta: {pmiss(dog).join(", ")}</div></div>
+                      </div>
+                    ))}
+                    {incompleteCount > 4 && <div style={{ fontSize:11, color:t.text3, padding:"8px 0", fontWeight:600 }}>...y {incompleteCount-4} más</div>}
+                  </div>
+                )}
               </Card>
             )}
 
@@ -2022,8 +1868,7 @@ export default function PawPark() {
                       </div>
                     </div>
                   )}
-                  </div>}
-            </Card>
+                </Card>
               );
             })()}
 
@@ -2062,16 +1907,17 @@ export default function PawPark() {
             <Card dark={dark}>
               <div onClick={() => setShowVac(v => !v)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
                 <div style={{ fontWeight:800, fontSize:14, color:t.text }}>💉 Vacunas que necesitan atención ({vacAlerts.length})</div>
-                <span style={{ fontSize:13, color:t.acc, fontWeight:700 }}>{showVac ? "▲ Ocultar" : "▼ Ver"}</span>
+                <span style={{ fontSize:12, color:t.acc, fontWeight:700 }}>{showVac ? "▲ Ocultar" : "▼ Ver"}</span>
               </div>
-              {showVac && <div style={{ marginTop:14 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+              {showVac && (
+              <div style={{ marginTop:14 }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
                 <div style={{ fontWeight:800, fontSize:14, color:t.text }}>Vacunas que necesitan atención</div>
                 {vacAlerts.length > 0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"2px 11px", fontSize:12, fontWeight:700, border:"1px solid " + t.acc + "30" }}>{vacAlerts.length}</span>}
               </div>
               {vacAlerts.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"26px 0", color:t.text3 }}><div style={{ fontSize:36 }}>🎉</div><div style={{ fontWeight:700, fontSize:14, marginTop:7 }}>Todo en orden!</div></div>
-              ) : vacAlerts.slice(0, showVac ? 999 : 4).map(dog => {
+              ) : vacAlerts.map(dog => {
                 const cv = VACCINES.filter(v => ["expired","soon"].includes(gvs(dog.vaccinations?.[v.id])));
                 const vs = ovs(dog); const vm = VST[vs];
                 return (
@@ -2091,6 +1937,8 @@ export default function PawPark() {
                   </div>
                 );
               })}
+              </div>
+              )}
             </Card>
             {dogs.length > 0 && (
               <Card dark={dark}>
@@ -2172,7 +2020,93 @@ export default function PawPark() {
 
         {/* Detail */}
         {view === "detail" && selDog && <DetailView key={selDog.id} dog={dogs.find(d=>d.id===selDog.id)||selDog} dark={dark} isAdmin={isAdmin} currentUser={currentUser} t={t} onBack={()=>setView("list")} onEdit={d=>{setEditDog(d);setView("form");}} onDelete={handleDelete}/>}
-
+        {false && false && (() => {
+          const dog = dogs.find(d=>d.id===selDog.id) || selDog;
+          const miss = pmiss(dog);
+          const sv = dog.care?.supervisionLevel ? SUPV[dog.care.supervisionLevel] : null;
+          const stays = dog.hotelStays || [];
+          const totalInc = stays.reduce((n,s)=>n+(s.incidents||[]).length,0);
+          const care = dog.care || {};
+          const g = dog.grooming || {};
+          const inc = dog.incidents || {};
+          const resp = dog.responsivas || {};
+          const bm = BRESULT[care.result] || BRESULT.pending;
+          const vs = ovs(dog);
+          const yn = v => v==="Si" ? "Si" : v==="No" ? "No" : v||null;
+          const treats = v => v==="si" ? "Si" : v==="no" ? "No" : v==="tutor" ? "Solo del tutor" : v||null;
+          const meals = [{key:"morning",label:"Manana"},{key:"afternoon",label:"Tarde"},{key:"evening",label:"Noche"}];
+          const [dTab, setDTab] = useState("perfil");
+          const needsWA = ["expired","soon"].includes(vs) && dog.phone;
+          const dtabs = [{id:"perfil",label:"Perfil"},{id:"salud",label:"Salud"},{id:"alimentacion",label:"Aliment."},{id:"comportamiento",label:"Comport."},{id:"vacunas",label:"Vacunas"},{id:"cuidador",label:"Cuidador"},{id:"grooming",label:"Grooming"},{id:"responsivas",label:"Responsivas",badge:isAdmin&&miss.length>0?miss.length:null},{id:"hotel",label:"Hotel",badge:totalInc>0?totalInc:null},{id:"seguimiento",label:"Seguimiento"},{id:"paquete",label:"📦 Paquete"},{id:"historial",label:"📅 Historial"}];
+          return (
+            <div>
+              <button onClick={() => setView("list")} style={{ background:"none", border:"none", color:t.acc, fontWeight:700, cursor:"pointer", fontSize:13, marginBottom:13, padding:0 }}>Volver</button>
+              <Card dark={dark}>
+                <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:18 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:13 }}>
+                    <DogAvatar dog={dog} size={62} />
+                    <div>
+                      <h2 style={{ margin:0, fontSize:20, color:t.text }}>{dog.name}</h2>
+                      <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}{dog.weight?" - "+dog.weight:""}</div>
+                      <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.owner}{dog.phone?" - "+dog.phone:""}</div>
+                      {(dog.emergencyVet||dog.emergencyVetPhone) && <div style={{ fontSize:11, color:"#8B5CF6", marginTop:2 }}>{dog.emergencyVet}{dog.emergencyVetPhone?" - "+dog.emergencyVetPhone:""}</div>}
+                      <div style={{ display:"flex", gap:6, marginTop:7, flexWrap:"wrap" }}>
+                        <BehBadge result={care.result||"pending"} />
+                        {sv && <span style={{ fontSize:10, fontWeight:700, color:sv.color, background:sv.bg, border:"1px solid " + sv.color + "30", borderRadius:99, padding:"2px 9px" }}>{"👁 Sup. "+sv.label}</span>}
+                        {isAdmin && miss.length>0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:800, border:"1px solid " + t.acc + "30" }}>Responsivas pendientes</span>}
+                        {stays.length>0 && <span style={{ background:dark?"#1A2040":"#EFF6FF", color:"#3B82F6", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:700, border:"1px solid #BFDBFE" }}>{"🏨 "+stays.length+(totalInc>0?" - "+totalInc+" inc.":"")}</span>}
+                        {(dog.areas||[]).map(a => { const AC = { Guarderia:"#22C55E", Hotel:"#3B82F6", Grooming:"#EC4899", Adiestramiento:"#8B5CF6", "Day Pass Personalizado":"#C1712C" }; const ac = AC[a]||"#6B7280"; return <span key={a} style={{ background:ac+"18", color:ac, border:"1px solid "+ac+"40", borderRadius:99, padding:"2px 9px", fontSize:10, fontWeight:700 }}>{a}</span>; })}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                    {needsWA && <button onClick={() => openWA(dog.phone, buildWAMsg(dog))} style={{ padding:"7px 14px", borderRadius:9, border:"none", background:"#25D366", color:"white", fontWeight:700, cursor:"pointer", fontSize:12 }}>WhatsApp</button>}
+                    <button onClick={() => {setEditDog(dog);setView("form");}} style={{ padding:"7px 14px", borderRadius:9, border:"1.5px solid " + t.acc, background:"transparent", color:t.acc, fontWeight:700, cursor:"pointer", fontSize:12 }}>Editar</button>
+                    {isAdmin && <button onClick={() => handleDelete(dog.id)} style={{ padding:"7px 14px", borderRadius:9, border:"1.5px solid #EF4444", background:"transparent", color:"#EF4444", fontWeight:700, cursor:"pointer", fontSize:12 }}>Eliminar</button>}
+                  </div>
+                </div>
+                <TabBar tabs={dtabs} active={dTab} onChange={setDTab} dark={dark} />
+                <div style={{ marginTop:16 }}>
+                  {dTab==="perfil" && <div style={{ display:"flex", flexDirection:"column", gap:10 }}><IGrid cols={3}><IRow dark={dark} label="NOMBRE" value={dog.name}/><IRow dark={dark} label="RAZA" value={dog.breed}/><IRow dark={dark} label="SEXO" value={dog.sex}/><IRow dark={dark} label="EDAD" value={dog.birthdate ? calcAge(dog.birthdate) : (dog.age||null)}/><IRow dark={dark} label="PESO" value={dog.weight}/><IRow dark={dark} label="COLOR" value={dog.color}/><IRow dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate||null}/><IRow dark={dark} label="ESTERILIZADO" value={yn(dog.sterilized)}/>{dog.lastCelo&&<IRow dark={dark} label="ULTIMO CELO" value={dog.lastCelo}/>}</IGrid><IGrid cols={2}><IRow dark={dark} label="TUTOR" value={dog.owner}/><IRow dark={dark} label="TEL" value={dog.phone}/></IGrid>{dog.authorizedPeople&&<IRow dark={dark} label="PERSONAS AUTORIZADAS" value={dog.authorizedPeople}/>}<IGrid cols={2}><IRow dark={dark} label="VET. EMERGENCIAS" value={dog.emergencyVet}/><IRow dark={dark} label="TEL. VET." value={dog.emergencyVetPhone}/></IGrid></div>}
+                  {dTab==="salud" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="ALERGIAS" value={dog.allergies}/><IRow dark={dark} label="CONDICIONES MEDICAS" value={dog.medicalConditions}/><IRow dark={dark} label="MEDICAMENTOS" value={dog.medications}/><IRow dark={dark} label="DOSIS Y FRECUENCIA" value={dog.dosage}/></div>}
+                  {dTab==="alimentacion" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={2}><IRow dark={dark} label="PRODUCTO" value={dog.foodProduct}/><IRow dark={dark} label="MEDIDA" value={dog.foodMeasure}/></IGrid>{meals.filter(m=>dog[m.key+"Time"]||dog[m.key+"Amount"]).map(m=><div key={m.key} style={{ display:"flex",alignItems:"center",gap:9,padding:"8px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span style={{ fontWeight:700,fontSize:12,color:t.accD,width:55 }}>{m.label}</span>{dog[m.key+"Time"]&&<span style={{ fontSize:12,color:t.text }}>{dog[m.key+"Time"]}</span>}{dog[m.key+"Amount"]&&<span style={{ fontSize:12,color:t.text,marginLeft:7 }}>{dog[m.key+"Amount"]}</span>}</div>)}<IRow dark={dark} label="NOTAS" value={dog.extraFoodNotes}/><IRow dark={dark} label="PREMIOS" value={treats(dog.treatsAllowed)}/>{dog.treatsAllowed==="tutor"&&<IRow dark={dark} label="PREMIOS DEL TUTOR" value={dog.tutorTreats}/>}</div>}
+                  {dTab==="comportamiento" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="CON LAS PERSONAS" value={dog.relationWithPeople}/><IRow dark={dark} label="MIEDOS" value={dog.fearsPhobias}/><IRow dark={dark} label="MANEJO ESPECIAL" value={dog.handlingInstructions}/><IRow dark={dark} label="AUTH. VET. EMERGENCIA" value={yn(dog.vetEmergencyAuth)}/></div>}
+                  {dTab==="vacunas" && <div style={{ display:"flex",flexDirection:"column",gap:6 }}>{VACCINES.map(v=><VacRow key={v.id} dark={dark} vac={dog.vaccinations?.[v.id]} label={v.label} icon={v.icon}/>)}</div>}
+                  {dTab==="cuidador" && <div style={{ display:"flex",flexDirection:"column",gap:11 }}>
+                    <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 17px",borderRadius:13,background:bm.bg,border:"1.5px solid "+bm.border }}>
+                      <div style={{ display:"flex",alignItems:"center",gap:9 }}><span style={{ fontSize:26 }}>{bm.icon}</span><div><div style={{ fontWeight:800,fontSize:14,color:bm.color }}>{bm.label}</div>{care.date&&<div style={{ fontSize:11,color:"#9CA3AF",marginTop:1 }}>{care.date}{care.evaluator?" - "+care.evaluator:""}</div>}</div></div>
+                      {care.result==="training"&&care.trainer&&<div style={{ textAlign:"right" }}><div style={{ fontSize:9,color:"#9CA3AF",fontWeight:700 }}>ENTRENADOR</div><div style={{ fontWeight:700,color:"#8B5CF6" }}>{"🏅 "+care.trainer}</div></div>}
+                    </div>
+                    {BCRITERIA.some(cr=>care.scores?.[cr.id]!==""&&care.scores?.[cr.id]!==undefined)&&<IGrid cols={2}>{BCRITERIA.map(cr=>{const s=care.scores?.[cr.id];const sm=(s!==""&&s!==undefined)?SCORE_META[s]:null;return<div key={cr.id} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 11px",borderRadius:9,background:t.surf2,border:"1px solid "+t.bord }}><span style={{ fontSize:12,color:t.text2,fontWeight:600 }}>{cr.label}</span>{sm?<span style={{ fontSize:10,fontWeight:700,color:sm.color,background:sm.color+"18",borderRadius:5,padding:"1px 7px" }}>{sm.label}</span>:<span style={{ fontSize:10,color:t.text3 }}>—</span>}</div>;})}</IGrid>}
+                    {sv&&<div style={{ display:"inline-flex",alignItems:"center",gap:7,padding:"6px 13px",borderRadius:9,background:sv.bg,border:"1px solid "+sv.color+"30" }}><span style={{ fontWeight:800,fontSize:12,color:sv.color }}>{"👁 SUPERVISION: "+sv.label}</span></div>}
+                    <div style={{ display:"flex",flexDirection:"column",gap:8 }}>{[["AL INGRESAR",care.behaviorAtEntry],["CON OTROS PERROS",care.dogInteraction],["CON EL PERSONAL",care.staffInteraction],["ALIMENTACION E HIDRATACION",care.foodHabits],["DURANTE EL JUEGO",care.playBehavior],["DURANTE EL DESCANSO",care.restBehavior],["OBSERVACIONES",care.notes]].map(([l,v])=><IRow key={l} dark={dark} label={l} value={v}/>)}</div>
+                  </div>}
+                  {dTab==="grooming" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={3}><IRow dark={dark} label="ULTIMO SERVICIO" value={g.lastDate}/><IRow dark={dark} label="ESTILISTA" value={g.stylist}/><IRow dark={dark} label="TIPO" value={g.lastService}/></IGrid>{[["BANHO",g.bathReactions],["SECADO",g.dryingReactions],["CORTE",g.cutReactions],["UNAS",g.nailReactions],["OIDOS",g.earsReactions],["NOTAS",g.notes]].map(([l,v])=><IRow key={l} dark={dark} label={l} value={v}/>)}</div>}
+                  {dTab==="responsivas" && <div style={{ display:"flex",flexDirection:"column",gap:13 }}>
+                    {isAdmin&&miss.length>0&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span>⚠</span><div style={{ fontWeight:700,fontSize:13,color:t.accD }}>{"Faltan: "+miss.join(" - ")}</div></div>}
+                    {[{key:"guarderia",label:"Responsiva Guarderia"},{key:"hotel",label:"Responsiva Hotel"}].map(({key,label})=>(
+                      <div key={key}><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{label}</div>
+                        <div style={{ padding:"11px 14px",borderRadius:11,background:resp[key]?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(resp[key]?"#86EFAC":"#FECACA"),fontSize:13,color:resp[key]?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}>
+                          <span>{resp[key] ? "✅ " + resp[key].name + " - " + resp[key].date : "Sin cargar"}</span>
+                          {resp[key]?.data && <a href={resp[key].data} download={resp[key].name} style={{ padding:"4px 10px",borderRadius:7,background:"#DCFCE7",color:"#15803D",fontSize:11,fontWeight:700,textDecoration:"none",border:"1px solid #86EFAC" }}>Descargar</a>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>}
+                  {dTab==="hotel" && <div style={{ display:"flex",flexDirection:"column",gap:13 }}>
+                    <div style={{ display:"flex",gap:13,padding:"11px 14px",borderRadius:11,background:t.accBg,border:"1px solid "+t.acc+"30" }}>
+                      <div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:t.acc,fontFamily:"Georgia,serif" }}>{stays.length}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>ESTANCIAS</div></div>
+                      <div style={{ width:1,background:t.bord }}/>
+                      <div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:"#EF4444",fontFamily:"Georgia,serif" }}>{totalInc}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>INCIDENTES</div></div>
+                    </div>
+                    {stays.length===0 ? <div style={{ textAlign:"center",padding:"22px 0",color:t.text3 }}><div style={{ fontSize:32 }}>🏨</div><div style={{ fontWeight:700,marginTop:7 }}>Sin estancias</div></div> : stays.slice().reverse().map(stay=><StayCard key={stay.id} dark={dark} stay={stay} dog={dog} currentUser={currentUser} readOnly onDelete={null} onChange={()=>{}}/>)}
+                  </div>}
+                  {dTab==="seguimiento" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="OBSERVACIONES DE SALUD" value={inc.healthObservations}/><IRow dark={dark} label="RECOMENDACIONES" value={inc.futureRecommendations}/></div>}
+                </div>
+              </Card>
+            </div>
+          );
+        })()}
       </main>
 
       <footer style={{ textAlign:"center", padding:"11px 0", color:t.text3, fontSize:10, fontWeight:600, letterSpacing:"0.1em", borderTop:"1px solid " + t.bord }}>
