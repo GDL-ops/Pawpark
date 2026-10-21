@@ -50,7 +50,11 @@ const mkId = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
 const ddiff = ds => !ds ? null : Math.floor((new Date(ds) - new Date()) / 864e5);
 const gvs = vac => { if (!vac?.expiry) return "none"; const d = ddiff(vac.expiry); return d < 0 ? "expired" : d <= 30 ? "soon" : "ok"; };
 function ovs(dog) { const ss = VACCINES.map(v => gvs(dog.vaccinations?.[v.id])); if (ss.includes("expired")) return "expired"; if (ss.includes("none")) return "none"; if (ss.includes("soon")) return "soon"; return "ok"; }
-const pmiss = dog => { const m = []; if (!dog.responsivas?.guarderia?.name) m.push("Responsiva Guarderia"); if (!dog.responsivas?.hotel?.name) m.push("Responsiva Hotel"); return m; };
+// Una sola responsiva Guarderia/Hotel. Se guarda en responsivas.guarderia; si un perrito solo tiene la antigua de hotel, se usa esa.
+const respKey = resp => resp?.guarderia?.name ? "guarderia" : resp?.hotel?.name ? "hotel" : "guarderia";
+const respFile = resp => resp?.[respKey(resp)] || null;
+const RESP_LABEL = "Responsiva Guarderia/Hotel";
+const pmiss = dog => { const m = []; if (!respFile(dog.responsivas)?.name) m.push(RESP_LABEL); return m; };
 const defVac = () => Object.fromEntries(VACCINES.map(v => [v.id, { applied:"", expiry:"" }]));
 const defDog = () => ({
   id:mkId(), photoColor:"#AACC71",
@@ -922,7 +926,7 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
         <div>
           <h2 style={{ margin:0, fontSize:19, color:t.text }}>{initial ? "Editar expediente" : "Nuevo expediente"}</h2>
           {dog.name && <div style={{ fontSize:13, color:t.text2, marginTop:2 }}>{dog.name}{dog.breed ? " - " + dog.breed : ""}</div>}
-          {miss.length > 0 && isAdmin && <div style={{ fontSize:11, color:t.acc, marginTop:2 }}>Faltan: {miss.join(" - ")}</div>}
+          {miss.length > 0 && isAdmin && <div style={{ fontSize:11, color:t.acc, marginTop:2 }}>Falta: {miss.join(" - ")}</div>}
         </div>
       </div>
       <TabBar tabs={tabs} active={tab} onChange={setTab} dark={dark} />
@@ -1099,13 +1103,13 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
         {tab === "responsivas" && (
           <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
             {ro("responsivas") && <ROBanner dark={dark} />}
-            {miss.length > 0 ? <div style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderRadius:11, background:t.accBg, border:"1.5px solid " + t.acc + "40" }}><span>⚠</span><div><div style={{ fontWeight:700, fontSize:13, color:t.accD }}>Perfil incompleto</div><div style={{ fontSize:12, color:t.text2 }}>Faltan: {miss.join(" - ")}</div></div></div> : <div style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderRadius:11, background:"#F0FDF4", border:"1.5px solid #86EFAC" }}><span>✅</span><div style={{ fontWeight:700, color:"#15803D" }}>Responsivas completas</div></div>}
-            {[{key:"guarderia",label:"Responsiva de Guarderia"},{key:"hotel",label:"Responsiva de Hotel"}].map(({key,label}) => (
-              <div key={key}><div style={{ fontWeight:800, fontSize:13, color:t.text, marginBottom:9 }}>{label}</div>
-                {ro("responsivas") ? <div style={{ padding:"12px 15px", borderRadius:11, background:resp[key]?"#F0FDF4":"#FEF2F2", border:"1.5px solid " + (resp[key]?"#86EFAC":"#FECACA"), fontSize:13, color:resp[key]?"#22C55E":"#EF4444", fontWeight:600 }}>{resp[key] ? "✅ " + resp[key].name : "Sin cargar"}</div>
-                  : <PdfUpload dark={dark} label={label} value={resp[key]} onChange={v=>set("responsivas",{...resp,[key]:v})} />}
+            {miss.length > 0 ? <div style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderRadius:11, background:t.accBg, border:"1.5px solid " + t.acc + "40" }}><span>⚠</span><div><div style={{ fontWeight:700, fontSize:13, color:t.accD }}>Perfil incompleto</div><div style={{ fontSize:12, color:t.text2 }}>Falta: {miss.join(" - ")}</div></div></div> : <div style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderRadius:11, background:"#F0FDF4", border:"1.5px solid #86EFAC" }}><span>✅</span><div style={{ fontWeight:700, color:"#15803D" }}>Responsiva completa</div></div>}
+            {(() => { const key = respKey(resp); const file = respFile(resp); return (
+              <div><div style={{ fontWeight:800, fontSize:13, color:t.text, marginBottom:9 }}>{RESP_LABEL}</div>
+                {ro("responsivas") ? <div style={{ padding:"12px 15px", borderRadius:11, background:file?"#F0FDF4":"#FEF2F2", border:"1.5px solid " + (file?"#86EFAC":"#FECACA"), fontSize:13, color:file?"#22C55E":"#EF4444", fontWeight:600 }}>{file ? "✅ " + file.name : "Sin cargar"}</div>
+                  : <PdfUpload dark={dark} label={RESP_LABEL} value={file} onChange={v=>set("responsivas",{...resp,[key]:v})} />}
               </div>
-            ))}
+            ); })()}
           </div>
         )}
         {tab === "hotel" && (
@@ -1311,7 +1315,7 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
           {dTab==="cuidador"&&<div style={{ display:"flex",flexDirection:"column",gap:11 }}><div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 17px",borderRadius:13,background:bm.bg,border:"1.5px solid "+bm.border }}><div style={{ display:"flex",alignItems:"center",gap:9 }}><span style={{ fontSize:26 }}>{bm.icon}</span><div><div style={{ fontWeight:800,fontSize:14,color:bm.color }}>{bm.label}</div>{care.date&&<div style={{ fontSize:11,color:"#9CA3AF",marginTop:1 }}>{care.date}{care.evaluator?" - "+care.evaluator:""}</div>}</div></div>{care.result==="training"&&care.trainer&&<div style={{ textAlign:"right" }}><div style={{ fontSize:9,color:"#9CA3AF",fontWeight:700 }}>ENTRENADOR</div><div style={{ fontWeight:700,color:"#8B5CF6" }}>{"🏅 "+care.trainer}</div></div>}</div>{BCRITERIA.some(cr=>care.scores?.[cr.id]!==""&&care.scores?.[cr.id]!==undefined)&&<IGrid cols={2}>{BCRITERIA.map(cr=>{const s=care.scores?.[cr.id];const sm=(s!==""&&s!==undefined)?SCORE_META[s]:null;return<div key={cr.id} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 11px",borderRadius:9,background:t.surf2,border:"1px solid "+t.bord }}><span style={{ fontSize:12,color:t.text2,fontWeight:600 }}>{cr.label}</span>{sm?<span style={{ fontSize:10,fontWeight:700,color:sm.color,background:sm.color+"18",borderRadius:5,padding:"1px 7px" }}>{sm.label}</span>:<span style={{ fontSize:10,color:t.text3 }}>—</span>}</div>;})}
           </IGrid>}{sv&&<div style={{ display:"inline-flex",alignItems:"center",gap:7,padding:"6px 13px",borderRadius:9,background:sv.bg,border:"1px solid "+sv.color+"30" }}><span style={{ fontWeight:800,fontSize:12,color:sv.color }}>{"👁 SUPERVISION: "+sv.label}</span></div>}<div style={{ display:"flex",flexDirection:"column",gap:8 }}>{[["AL INGRESAR",care.behaviorAtEntry],["CON OTROS PERROS",care.dogInteraction],["CON EL PERSONAL",care.staffInteraction],["ALIMENTACION E HIDRATACION",care.foodHabits],["DURANTE EL JUEGO",care.playBehavior],["DURANTE EL DESCANSO",care.restBehavior],["OBSERVACIONES",care.notes]].map(([l,v])=><IRow key={l} dark={dark} label={l} value={v}/>)}</div></div>}
           {dTab==="grooming"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={3}><IRow dark={dark} label="ULTIMO SERVICIO" value={g.lastDate}/><IRow dark={dark} label="ESTILISTA" value={g.stylist}/><IRow dark={dark} label="TIPO" value={g.lastService}/></IGrid>{[["BANHO",g.bathReactions],["SECADO",g.dryingReactions],["CORTE",g.cutReactions],["UNAS",g.nailReactions],["OIDOS",g.earsReactions],["NOTAS",g.notes]].map(([l,v])=><IRow key={l} dark={dark} label={l} value={v}/>)}</div>}
-          {dTab==="responsivas"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}>{isAdmin&&miss.length>0&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span>⚠</span><div style={{ fontWeight:700,fontSize:13,color:t.accD }}>{"Faltan: "+miss.join(" - ")}</div></div>}{[{key:"guarderia",label:"Responsiva Guarderia"},{key:"hotel",label:"Responsiva Hotel"}].map(({key,label})=><div key={key}><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{label}</div><div style={{ padding:"11px 14px",borderRadius:11,background:resp[key]?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(resp[key]?"#86EFAC":"#FECACA"),fontSize:13,color:resp[key]?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}><span>{resp[key]?"✅ "+resp[key].name+" - "+resp[key].date:"Sin cargar"}</span><FileDownload file={resp[key]} small /></div></div>)}</div>}
+          {dTab==="responsivas"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}>{isAdmin&&miss.length>0&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span>⚠</span><div style={{ fontWeight:700,fontSize:13,color:t.accD }}>{"Falta: "+miss.join(" - ")}</div></div>}{(()=>{const file=respFile(resp);return <div><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{RESP_LABEL}</div><div style={{ padding:"11px 14px",borderRadius:11,background:file?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(file?"#86EFAC":"#FECACA"),fontSize:13,color:file?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}><span>{file?"✅ "+file.name+" - "+file.date:"Sin cargar"}</span><FileDownload file={file} small /></div></div>;})()}</div>}
           {dTab==="hotel"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}><div style={{ display:"flex",gap:13,padding:"11px 14px",borderRadius:11,background:t.accBg,border:"1px solid "+t.acc+"30" }}><div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:t.acc,fontFamily:"Georgia,serif" }}>{stays.length}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>ESTANCIAS</div></div><div style={{ width:1,background:t.bord }}/><div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:"#EF4444",fontFamily:"Georgia,serif" }}>{totalInc}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>INCIDENTES</div></div></div>{stays.length===0?<div style={{ textAlign:"center",padding:"22px 0",color:t.text3 }}><div style={{ fontSize:32 }}>🏨</div><div style={{ fontWeight:700,marginTop:7 }}>Sin estancias</div></div>:stays.slice().reverse().map(stay=><StayCard key={stay.id} dark={dark} stay={stay} dog={dog} currentUser={currentUser} readOnly onDelete={null} onChange={()=>{}}/>)}</div>}
           {dTab==="seguimiento"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="OBSERVACIONES DE SALUD" value={inc.healthObservations}/><IRow dark={dark} label="RECOMENDACIONES" value={inc.futureRecommendations}/></div>}
                   {dTab==="historial"&&<div style={{ display:"flex",flexDirection:"column",gap:12 }}>
@@ -2237,15 +2241,15 @@ export default function PawPark() {
                   </div>}
                   {dTab==="grooming" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={3}><IRow dark={dark} label="ULTIMO SERVICIO" value={g.lastDate}/><IRow dark={dark} label="ESTILISTA" value={g.stylist}/><IRow dark={dark} label="TIPO" value={g.lastService}/></IGrid>{[["BANHO",g.bathReactions],["SECADO",g.dryingReactions],["CORTE",g.cutReactions],["UNAS",g.nailReactions],["OIDOS",g.earsReactions],["NOTAS",g.notes]].map(([l,v])=><IRow key={l} dark={dark} label={l} value={v}/>)}</div>}
                   {dTab==="responsivas" && <div style={{ display:"flex",flexDirection:"column",gap:13 }}>
-                    {isAdmin&&miss.length>0&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span>⚠</span><div style={{ fontWeight:700,fontSize:13,color:t.accD }}>{"Faltan: "+miss.join(" - ")}</div></div>}
-                    {[{key:"guarderia",label:"Responsiva Guarderia"},{key:"hotel",label:"Responsiva Hotel"}].map(({key,label})=>(
-                      <div key={key}><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{label}</div>
-                        <div style={{ padding:"11px 14px",borderRadius:11,background:resp[key]?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(resp[key]?"#86EFAC":"#FECACA"),fontSize:13,color:resp[key]?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}>
-                          <span>{resp[key] ? "✅ " + resp[key].name + " - " + resp[key].date : "Sin cargar"}</span>
-                          <FileDownload file={resp[key]} small />
+                    {isAdmin&&miss.length>0&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span>⚠</span><div style={{ fontWeight:700,fontSize:13,color:t.accD }}>{"Falta: "+miss.join(" - ")}</div></div>}
+                    {(() => { const file = respFile(resp); return (
+                      <div><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{RESP_LABEL}</div>
+                        <div style={{ padding:"11px 14px",borderRadius:11,background:file?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(file?"#86EFAC":"#FECACA"),fontSize:13,color:file?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}>
+                          <span>{file ? "✅ " + file.name + " - " + file.date : "Sin cargar"}</span>
+                          <FileDownload file={file} small />
                         </div>
                       </div>
-                    ))}
+                    ); })()}
                   </div>}
                   {dTab==="hotel" && <div style={{ display:"flex",flexDirection:"column",gap:13 }}>
                     <div style={{ display:"flex",gap:13,padding:"11px 14px",borderRadius:11,background:t.accBg,border:"1px solid "+t.acc+"30" }}>
