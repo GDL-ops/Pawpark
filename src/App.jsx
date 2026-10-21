@@ -192,6 +192,78 @@ function ageFromText(ageStr) {
   return d.toISOString().slice(0, 10);
 }
 
+const MONTHS_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+function parseBirthdate(str) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(str || "");
+  if (m) return { y:+m[1], m:+m[2]-1, d:+m[3] };
+  const b = new Date(str);
+  return isNaN(b) ? null : { y:b.getFullYear(), m:b.getMonth(), d:b.getDate() };
+}
+
+// Perritos que cumplen años en el mes indicado (0 = enero), ordenados por día.
+function birthdaysInMonth(dogs, month, year = new Date().getFullYear()) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return dogs
+    .map(dog => ({ dog, b: parseBirthdate(dog.birthdate) }))
+    .filter(({ b }) => b && b.m === month)
+    .map(({ dog, b }) => {
+      const date = new Date(year, month, b.d);
+      return { dog, day: b.d, age: year - b.y, diff: Math.round((date - today) / 864e5) };
+    })
+    .sort((a, b) => a.day - b.day);
+}
+
+function BirthdayMonthCard({ dogs, dark, onOpen }) {
+  const t = getT(dark);
+  const now = new Date();
+  const [offset, setOffset] = useState(0);
+  const sel = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const month = sel.getMonth(), year = sel.getFullYear();
+  const list = birthdaysInMonth(dogs, month, year);
+  const isCurrent = offset === 0;
+  const navBtn = { width:28, height:28, borderRadius:8, border:"1px solid " + t.bord, background:t.surf2, color:t.text, fontSize:14, fontWeight:800, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" };
+  return (
+    <Card dark={dark} style={{ border:"2px solid #F982C830" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginBottom:14, flexWrap:"wrap" }}>
+        <div style={{ fontWeight:800, fontSize:14, color:t.text }}>🎂 Cumpleaños de {MONTHS_ES[month]}{year !== now.getFullYear() ? " " + year : ""}</div>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <span style={{ background:"#F982C820", color:"#F982C8", borderRadius:99, padding:"2px 11px", fontSize:12, fontWeight:700, border:"1px solid #F982C840" }}>{list.length} perrito{list.length !== 1 ? "s" : ""}</span>
+          <button onClick={() => setOffset(o => o - 1)} style={navBtn} title="Mes anterior">‹</button>
+          {!isCurrent && <button onClick={() => setOffset(0)} style={{ ...navBtn, width:"auto", padding:"0 9px", fontSize:11 }}>Hoy</button>}
+          <button onClick={() => setOffset(o => o + 1)} style={navBtn} title="Mes siguiente">›</button>
+        </div>
+      </div>
+      {list.length === 0
+        ? <div style={{ textAlign:"center", padding:"14px 0", color:t.text3, fontSize:13 }}>Sin cumpleaños en {MONTHS_ES[month].toLowerCase()}</div>
+        : <div style={{ display:"flex", flexDirection:"column", gap:8, maxHeight:340, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
+            {list.map(({ dog, day, age, diff }) => {
+              const past = diff < 0, today = diff === 0;
+              return (
+                <div key={dog.id} onClick={() => onOpen(dog)} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 13px", borderRadius:12, background:today?"#F982C815":t.surf2, border:"1px solid "+(today?"#F982C850":t.bord), cursor:"pointer", opacity:past?0.55:1 }}>
+                  <div style={{ width:40, textAlign:"center", flexShrink:0 }}>
+                    <div style={{ fontSize:18, fontWeight:900, color:"#F982C8", lineHeight:1 }}>{day}</div>
+                    <div style={{ fontSize:9, fontWeight:800, color:t.text3, letterSpacing:"0.05em" }}>{MONTHS_ES[month].slice(0,3).toUpperCase()}</div>
+                  </div>
+                  <DogAvatar dog={dog} size={38} />
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{dog.name} {age > 0 && <span style={{ fontSize:11, color:t.text3 }}>cumple {age} año{age !== 1 ? "s" : ""}</span>}</div>
+                    <div style={{ fontSize:11, color:t.text2 }}>{dog.breed ? dog.breed + " · " : ""}{dog.owner}</div>
+                  </div>
+                  {today
+                    ? <span style={{ background:"#F982C8", color:"white", borderRadius:99, padding:"3px 10px", fontSize:11, fontWeight:800 }}>¡Hoy!</span>
+                    : past
+                      ? <span style={{ color:t.text3, fontSize:11, fontWeight:700 }}>Ya pasó</span>
+                      : isCurrent && <span style={{ background:diff<=7?"#F982C820":t.surf, color:diff<=7?"#F982C8":t.text3, borderRadius:99, padding:"3px 10px", fontSize:11, fontWeight:700, border:"1px solid "+(diff<=7?"#F982C840":t.bord) }}>En {diff} día{diff!==1?"s":""}</span>}
+                </div>
+              );
+            })}
+          </div>}
+    </Card>
+  );
+}
+
 function upcomingBirthdays(dogs, days=31) {
   const today = new Date();
   const result = [];
@@ -2114,37 +2186,7 @@ export default function PawPark() {
             })()}
 
             {/* Birthday panel */}
-            {(() => {
-              const bdays = upcomingBirthdays(dogs, 31);
-              if (bdays.length === 0) return null;
-              return (
-                <Card dark={dark} style={{ border:"2px solid #F982C830" }}>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-                    <div style={{ fontWeight:800, fontSize:14, color:t.text }}>🎂 Cumpleaños proximos</div>
-                    <span style={{ background:"#F982C820", color:"#F982C8", borderRadius:99, padding:"2px 11px", fontSize:12, fontWeight:700, border:"1px solid #F982C840" }}>{bdays.length} este mes</span>
-                  </div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                    {bdays.map(({dog, diff, next, age}) => (
-                      <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:11, padding:"10px 13px", borderRadius:12, background:diff===0?"#F982C815":t.surf2, border:"1px solid "+(diff===0?"#F982C850":t.bord), cursor:"pointer", transition:"all 0.15s" }}
-                        onMouseEnter={e=>e.currentTarget.style.transform="translateX(4px)"}
-                        onMouseLeave={e=>e.currentTarget.style.transform="translateX(0)"}>
-                        <DogAvatar dog={dog} size={38} />
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{dog.name} <span style={{ fontSize:11, color:t.text3 }}>cumple {age} años</span></div>
-                          <div style={{ fontSize:11, color:t.text2 }}>{dog.owner}</div>
-                        </div>
-                        <div style={{ textAlign:"right" }}>
-                          {diff === 0
-                            ? <span style={{ background:"#F982C8", color:"white", borderRadius:99, padding:"3px 10px", fontSize:11, fontWeight:800 }}>Hoy!</span>
-                            : <span style={{ background:diff<=7?"#F982C820":t.surf2, color:diff<=7?"#F982C8":t.text3, borderRadius:99, padding:"3px 10px", fontSize:11, fontWeight:700, border:"1px solid "+(diff<=7?"#F982C840":t.bord) }}>En {diff} dia{diff!==1?"s":""}</span>
-                          }
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              );
-            })()}
+            <BirthdayMonthCard dark={dark} dogs={dogs} onOpen={dog => {setSelDog(dog);setView("detail");}} />
             <Card dark={dark}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
                 <div style={{ fontWeight:800, fontSize:14, color:t.text }}>Vacunas que necesitan atencion</div>
