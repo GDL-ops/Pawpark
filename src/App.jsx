@@ -1924,7 +1924,7 @@ export default function PawPark() {
       <header style={{ background:t.head, padding:"0 22px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 4px 16px #143B3140", position:"sticky", top:0, zIndex:100 }}>
         <div style={{ display:"flex", alignItems:"center", gap:11, padding:"11px 0" }}>
           <div style={{ height:36, display:"flex", alignItems:"center" }}>
-            <svg viewBox="0 0 792 612" style={{ height:28, filter:"brightness(0) invert(1)" }}>
+            <svg viewBox="65 250 640 128" style={{ height:24, filter:"brightness(0) invert(1)" }}>
               <g>
                 <path fill="white" d="M107.96,258.59H73.75v110.77h23.91v-50.65h14.95c5.81,0,11.29-2.16,15.11-5.98c4.15-4.32,5.81-10.8,5.81-23.58c0-10.63-1-15.94-3.65-20.09C125.4,262.24,117.76,258.59,107.96,258.59z M107.96,295.96c-1.49,1.33-3.82,2.33-5.48,2.33h-4.82v-19.26h4.48c5.81,0,7.81,2.49,7.81,9.63C109.95,292.97,109.45,294.63,107.96,295.96z"/>
                 <path fill="white" d="M151.13,258.59l-15.61,110.77h23.08l2.16-15.78h12.79l1.33,15.78h23.58l-15.45-110.77H151.13z M162.59,332.66l1-11.29c0.5-6.48,1-12.79,1.66-19.26c0.17-2.32,0.67-9.13,1.16-16.77l0.66-9.8l3.49,46l0.83,11.13H162.59z"/>
