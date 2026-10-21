@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { db } from "./firebase.js";
-import { collection, doc, setDoc, deleteDoc, onSnapshot, getDocs } from "firebase/firestore";
+import { collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, getDocs, writeBatch } from "firebase/firestore";
 
 
 
@@ -344,19 +344,91 @@ function Card({ children, style={}, onClick, dark }) {
 }
 
 // ---- PDF Upload --------------------------------------------------------------
+// Firestore limita cada documento a 1MB, asi que el PDF se guarda aparte en la
+// coleccion "files", partido en pedazos. El expediente solo guarda nombre, fecha y fileId.
+const FILE_CHUNK = 700000;
+
+async function uploadPdf(f) {
+  const dataUrl = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = ev => res(ev.target.result);
+    r.onerror = () => rej(new Error("No se pudo leer el archivo"));
+    r.readAsDataURL(f);
+  });
+  const fileId = "f_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+  const chunks = [];
+  for (let i = 0; i < dataUrl.length; i += FILE_CHUNK) chunks.push(dataUrl.slice(i, i + FILE_CHUNK));
+  for (let i = 0; i < chunks.length; i++) {
+    await setDoc(doc(db, "files", fileId + "_" + i), { fileId, idx: i, total: chunks.length, chunk: chunks[i] });
+  }
+  return { name: f.name, date: new Date().toLocaleDateString("es-MX"), fileId, chunks: chunks.length, size: f.size };
+}
+
+async function loadPdfDataUrl(file) {
+  if (file?.data) return file.data;
+  if (!file?.fileId) throw new Error("Archivo sin datos");
+  const parts = await Promise.all(
+    Array.from({ length: file.chunks || 1 }, (_, i) => getDoc(doc(db, "files", file.fileId + "_" + i)))
+  );
+  if (parts.some(p => !p.exists())) throw new Error("Faltan partes del archivo");
+  return parts.map(p => p.data().chunk).join("");
+}
+
+async function deletePdf(file) {
+  if (!file?.fileId) return;
+  try {
+    const b = writeBatch(db);
+    for (let i = 0; i < (file.chunks || 1); i++) b.delete(doc(db, "files", file.fileId + "_" + i));
+    await b.commit();
+  } catch (e) { console.error(e); }
+}
+
+function FileDownload({ file, small }) {
+  const [busy, setBusy] = useState(false);
+  if (!file?.data && !file?.fileId) return null;
+  const go = async e => {
+    e.stopPropagation(); e.preventDefault();
+    setBusy(true);
+    try {
+      const dataUrl = await loadPdfDataUrl(file);
+      const blob = await (await fetch(dataUrl)).blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = file.name || "responsiva.pdf"; a.target = "_blank"; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      console.error(err); alert("No se pudo descargar el archivo: " + err.message);
+    }
+    setBusy(false);
+  };
+  return (
+    <button onClick={go} disabled={busy} style={{ padding: small ? "4px 10px" : "5px 11px", borderRadius:7, background:"#DCFCE7", color:"#15803D", fontSize:11, fontWeight:700, border:"1px solid #86EFAC", cursor: busy ? "wait" : "pointer" }}>
+      {busy ? "Abriendo..." : "Descargar"}
+    </button>
+  );
+}
+
 function PdfUpload({ label, value, onChange, dark }) {
   const t = getT(dark);
   const ref = useRef();
-  const hf = e => {
-    const f = e.target.files[0]; if (!f) return;
+  const [busy, setBusy] = useState(false);
+  const hf = async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
     if (f.size > 4*1024*1024) { alert("Max 4MB"); return; }
-    const r = new FileReader();
-    r.onload = ev => onChange({ name:f.name, data:ev.target.result, date:new Date().toLocaleDateString("es-MX") });
-    r.readAsDataURL(f);
+    setBusy(true);
+    try {
+      const meta = await uploadPdf(f);
+      onChange(meta);
+    } catch (err) {
+      console.error(err); alert("No se pudo subir el PDF: " + err.message);
+    }
+    setBusy(false);
   };
+  const remove = e => { e.stopPropagation(); deletePdf(value); onChange(null); };
   return (
-    <div style={{ border:"2px dashed " + (value?.name ? "#22C55E" : t.bord), borderRadius:14, padding:"18px", background:value?.name ? (dark?"#0A2D14":"#F0FDF4") : t.surf2, cursor:"pointer" }} onClick={() => !value?.name && ref.current.click()}>
-      <input ref={ref} type="file" accept=".pdf" style={{ display:"none" }} onChange={hf} />
+    <div style={{ border:"2px dashed " + (value?.name ? "#22C55E" : t.bord), borderRadius:14, padding:"18px", background:value?.name ? (dark?"#0A2D14":"#F0FDF4") : t.surf2, cursor: busy ? "wait" : "pointer" }} onClick={() => !value?.name && !busy && ref.current.click()}>
+      <input ref={ref} type="file" accept=".pdf,application/pdf" style={{ display:"none" }} onChange={hf} />
       {value?.name ? (
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -364,10 +436,12 @@ function PdfUpload({ label, value, onChange, dark }) {
             <div><div style={{ fontWeight:700, fontSize:13, color:"#22C55E" }}>{value.name}</div><div style={{ fontSize:11, color:t.text3 }}>{value.date}</div></div>
           </div>
           <div style={{ display:"flex", gap:8 }}>
-            {value.data && <a href={value.data} download={value.name} onClick={e=>e.stopPropagation()} style={{ padding:"5px 11px", borderRadius:7, background:"#DCFCE7", color:"#15803D", fontSize:11, fontWeight:700, textDecoration:"none", border:"1px solid #86EFAC" }}>Descargar</a>}
-            <button onClick={e=>{e.stopPropagation();onChange(null);}} style={{ padding:"5px 11px", borderRadius:7, background:"#FEF2F2", color:"#EF4444", fontSize:11, fontWeight:700, border:"1px solid #FECACA", cursor:"pointer" }}>Quitar</button>
+            <FileDownload file={value} />
+            <button onClick={remove} style={{ padding:"5px 11px", borderRadius:7, background:"#FEF2F2", color:"#EF4444", fontSize:11, fontWeight:700, border:"1px solid #FECACA", cursor:"pointer" }}>Quitar</button>
           </div>
         </div>
+      ) : busy ? (
+        <div style={{ textAlign:"center" }}><div style={{ fontSize:26, marginBottom:5 }}>⏳</div><div style={{ fontWeight:700, fontSize:13, color:t.text3 }}>Subiendo PDF...</div></div>
       ) : (
         <div style={{ textAlign:"center" }}><div style={{ fontSize:26, marginBottom:5 }}>📤</div><div style={{ fontWeight:700, fontSize:13, color:t.text3 }}>{label}</div><div style={{ fontSize:11, color:t.text3, opacity:.6 }}>PDF max. 4MB</div></div>
       )}
@@ -1237,7 +1311,7 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
           {dTab==="cuidador"&&<div style={{ display:"flex",flexDirection:"column",gap:11 }}><div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 17px",borderRadius:13,background:bm.bg,border:"1.5px solid "+bm.border }}><div style={{ display:"flex",alignItems:"center",gap:9 }}><span style={{ fontSize:26 }}>{bm.icon}</span><div><div style={{ fontWeight:800,fontSize:14,color:bm.color }}>{bm.label}</div>{care.date&&<div style={{ fontSize:11,color:"#9CA3AF",marginTop:1 }}>{care.date}{care.evaluator?" - "+care.evaluator:""}</div>}</div></div>{care.result==="training"&&care.trainer&&<div style={{ textAlign:"right" }}><div style={{ fontSize:9,color:"#9CA3AF",fontWeight:700 }}>ENTRENADOR</div><div style={{ fontWeight:700,color:"#8B5CF6" }}>{"🏅 "+care.trainer}</div></div>}</div>{BCRITERIA.some(cr=>care.scores?.[cr.id]!==""&&care.scores?.[cr.id]!==undefined)&&<IGrid cols={2}>{BCRITERIA.map(cr=>{const s=care.scores?.[cr.id];const sm=(s!==""&&s!==undefined)?SCORE_META[s]:null;return<div key={cr.id} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 11px",borderRadius:9,background:t.surf2,border:"1px solid "+t.bord }}><span style={{ fontSize:12,color:t.text2,fontWeight:600 }}>{cr.label}</span>{sm?<span style={{ fontSize:10,fontWeight:700,color:sm.color,background:sm.color+"18",borderRadius:5,padding:"1px 7px" }}>{sm.label}</span>:<span style={{ fontSize:10,color:t.text3 }}>—</span>}</div>;})}
           </IGrid>}{sv&&<div style={{ display:"inline-flex",alignItems:"center",gap:7,padding:"6px 13px",borderRadius:9,background:sv.bg,border:"1px solid "+sv.color+"30" }}><span style={{ fontWeight:800,fontSize:12,color:sv.color }}>{"👁 SUPERVISION: "+sv.label}</span></div>}<div style={{ display:"flex",flexDirection:"column",gap:8 }}>{[["AL INGRESAR",care.behaviorAtEntry],["CON OTROS PERROS",care.dogInteraction],["CON EL PERSONAL",care.staffInteraction],["ALIMENTACION E HIDRATACION",care.foodHabits],["DURANTE EL JUEGO",care.playBehavior],["DURANTE EL DESCANSO",care.restBehavior],["OBSERVACIONES",care.notes]].map(([l,v])=><IRow key={l} dark={dark} label={l} value={v}/>)}</div></div>}
           {dTab==="grooming"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={3}><IRow dark={dark} label="ULTIMO SERVICIO" value={g.lastDate}/><IRow dark={dark} label="ESTILISTA" value={g.stylist}/><IRow dark={dark} label="TIPO" value={g.lastService}/></IGrid>{[["BANHO",g.bathReactions],["SECADO",g.dryingReactions],["CORTE",g.cutReactions],["UNAS",g.nailReactions],["OIDOS",g.earsReactions],["NOTAS",g.notes]].map(([l,v])=><IRow key={l} dark={dark} label={l} value={v}/>)}</div>}
-          {dTab==="responsivas"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}>{isAdmin&&miss.length>0&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span>⚠</span><div style={{ fontWeight:700,fontSize:13,color:t.accD }}>{"Faltan: "+miss.join(" - ")}</div></div>}{[{key:"guarderia",label:"Responsiva Guarderia"},{key:"hotel",label:"Responsiva Hotel"}].map(({key,label})=><div key={key}><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{label}</div><div style={{ padding:"11px 14px",borderRadius:11,background:resp[key]?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(resp[key]?"#86EFAC":"#FECACA"),fontSize:13,color:resp[key]?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}><span>{resp[key]?"✅ "+resp[key].name+" - "+resp[key].date:"Sin cargar"}</span>{resp[key]?.data&&<a href={resp[key].data} download={resp[key].name} style={{ padding:"4px 10px",borderRadius:7,background:"#DCFCE7",color:"#15803D",fontSize:11,fontWeight:700,textDecoration:"none",border:"1px solid #86EFAC" }}>Descargar</a>}</div></div>)}</div>}
+          {dTab==="responsivas"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}>{isAdmin&&miss.length>0&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span>⚠</span><div style={{ fontWeight:700,fontSize:13,color:t.accD }}>{"Faltan: "+miss.join(" - ")}</div></div>}{[{key:"guarderia",label:"Responsiva Guarderia"},{key:"hotel",label:"Responsiva Hotel"}].map(({key,label})=><div key={key}><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{label}</div><div style={{ padding:"11px 14px",borderRadius:11,background:resp[key]?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(resp[key]?"#86EFAC":"#FECACA"),fontSize:13,color:resp[key]?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}><span>{resp[key]?"✅ "+resp[key].name+" - "+resp[key].date:"Sin cargar"}</span><FileDownload file={resp[key]} small /></div></div>)}</div>}
           {dTab==="hotel"&&<div style={{ display:"flex",flexDirection:"column",gap:13 }}><div style={{ display:"flex",gap:13,padding:"11px 14px",borderRadius:11,background:t.accBg,border:"1px solid "+t.acc+"30" }}><div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:t.acc,fontFamily:"Georgia,serif" }}>{stays.length}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>ESTANCIAS</div></div><div style={{ width:1,background:t.bord }}/><div style={{ textAlign:"center" }}><div style={{ fontSize:18,fontWeight:900,color:"#EF4444",fontFamily:"Georgia,serif" }}>{totalInc}</div><div style={{ fontSize:9,color:t.text3,fontWeight:700 }}>INCIDENTES</div></div></div>{stays.length===0?<div style={{ textAlign:"center",padding:"22px 0",color:t.text3 }}><div style={{ fontSize:32 }}>🏨</div><div style={{ fontWeight:700,marginTop:7 }}>Sin estancias</div></div>:stays.slice().reverse().map(stay=><StayCard key={stay.id} dark={dark} stay={stay} dog={dog} currentUser={currentUser} readOnly onDelete={null} onChange={()=>{}}/>)}</div>}
           {dTab==="seguimiento"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="OBSERVACIONES DE SALUD" value={inc.healthObservations}/><IRow dark={dark} label="RECOMENDACIONES" value={inc.futureRecommendations}/></div>}
                   {dTab==="historial"&&<div style={{ display:"flex",flexDirection:"column",gap:12 }}>
@@ -1802,7 +1876,12 @@ export default function PawPark() {
   const isAdmin = currentUser?.isAdmin;
 
   const handleSave = async dog => {
-    try { await setDoc(doc(db, "dogs", dog.id), dog); } catch (e) { console.error(e); }
+    try { await setDoc(doc(db, "dogs", dog.id), dog); }
+    catch (e) {
+      console.error(e);
+      alert("No se pudo guardar el expediente: " + (e.message || e) + "\nRevisa tu conexion e intenta de nuevo.");
+      return;
+    }
     setView("list"); setEditDog(null);
   };
   const handleDelete = async id => {
@@ -2163,7 +2242,7 @@ export default function PawPark() {
                       <div key={key}><div style={{ fontWeight:800,fontSize:13,color:t.text,marginBottom:7 }}>{label}</div>
                         <div style={{ padding:"11px 14px",borderRadius:11,background:resp[key]?(dark?"#0A2D14":"#F0FDF4"):(dark?"#2D0A0A":"#FEF2F2"),border:"1.5px solid "+(resp[key]?"#86EFAC":"#FECACA"),fontSize:13,color:resp[key]?"#22C55E":"#EF4444",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between" }}>
                           <span>{resp[key] ? "✅ " + resp[key].name + " - " + resp[key].date : "Sin cargar"}</span>
-                          {resp[key]?.data && <a href={resp[key].data} download={resp[key].name} style={{ padding:"4px 10px",borderRadius:7,background:"#DCFCE7",color:"#15803D",fontSize:11,fontWeight:700,textDecoration:"none",border:"1px solid #86EFAC" }}>Descargar</a>}
+                          <FileDownload file={resp[key]} small />
                         </div>
                       </div>
                     ))}
