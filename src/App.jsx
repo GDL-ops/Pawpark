@@ -131,10 +131,14 @@ const DAYCARE_RANGES = [
   { maxHrs: 12, label: "12 hrs", price: 275 },
 ];
 
+// Minutos de gracia antes de pasar al siguiente rango (ej. 4:30 todavia cobra 4 hrs; 4:31 ya cobra 6 hrs).
+const DAYCARE_TOLERANCE_MIN = 30;
+
 function getDaycareRange(elapsedMs) {
   const hrs = elapsedMs / 3600000;
+  const tol = DAYCARE_TOLERANCE_MIN / 60;
   for (const r of DAYCARE_RANGES) {
-    if (hrs <= r.maxHrs) return r;
+    if (hrs <= r.maxHrs + tol) return r;
   }
   return DAYCARE_RANGES[DAYCARE_RANGES.length - 1];
 }
