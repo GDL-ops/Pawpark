@@ -994,7 +994,7 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
             {!ro("perrito") && <div><Lbl dark={dark}>COLOR DE AVATAR</Lbl><div style={{ display:"flex", gap:8 }}>{COLORS.map(c2 => <div key={c2} onClick={() => set("photoColor",c2)} style={{ width:26,height:26,borderRadius:"50%",background:c2,cursor:"pointer",border:dog.photoColor===c2?"3px solid white":"3px solid transparent",boxSizing:"border-box" }} />)}</div></div>}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               <Field dark={dark} label="NOMBRE" value={dog.name} onChange={ro("perrito")?null:v=>set("name",v)} placeholder="Max" />
-              <Sel dark={dark} label="RAZA" options={BREEDS} value={dog.breed} onChange={ro("perrito")?null:v=>set("breed",v)} disabled={ro("perrito")} />
+              <div><Lbl dark={dark}>RAZA</Lbl><input list="pp-breeds" value={dog.breed||""} onChange={e=>!ro("perrito")&&set("breed",e.target.value)} placeholder="Escribe o elige la raza" disabled={ro("perrito")} style={inp(dark, ro("perrito"))} /><datalist id="pp-breeds">{BREEDS.filter(b=>b!=="Otro").map(b=><option key={b} value={b} />)}</datalist></div>
               <Radio dark={dark} label="SEXO" value={dog.sex} onChange={ro("perrito")?null:v=>set("sex",v)} options={[{value:"Macho",label:"Macho"},{value:"Hembra",label:"Hembra"}]} disabled={ro("perrito")} />
               <div>
                 <Lbl dark={dark}>EDAD</Lbl>
@@ -1448,7 +1448,7 @@ function PublicDaycarePanel() {
   useEffect(() => {
     const missing = [...new Set(sessions.map(s => s.dogId).filter(id => id && !(id in photos)))];
     if (!missing.length) return;
-    Promise.all(missing.map(id => getDoc(doc(db, "dogs", id)).then(d => [id, d.exists() ? (d.data().photo || "") : ""]).catch(() => [id, ""])))
+    Promise.all(missing.map(id => getDoc(doc(db, "dogs", id)).then(d => [id, d.exists() ? { photo:d.data().photo || "", breed:d.data().breed || "" } : {}]).catch(() => [id, {}])))
       .then(entries => setPhotos(p => ({ ...p, ...Object.fromEntries(entries) })));
   }, [sessions]);
 
@@ -1514,9 +1514,10 @@ function PublicDaycarePanel() {
                 {isPackage && <div style={{ position:"absolute", top:10, right:10, background:"linear-gradient(135deg,#C1712C,#F8D061)", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800, color:"white" }}>★ PAQUETE</div>}
                 {isPaused && <div style={{ position:"absolute", top:10, right:10, background:"rgba(255,255,255,0.15)", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800, color:"#aaa" }}>PAUSA</div>}
                 <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
-                  <DogAvatar dog={{ name:s.dogName, photo:photos[s.dogId], photoColor: isPackage ? "#C1712C" : "#AACC71" }} size={64} />
+                  <DogAvatar dog={{ name:s.dogName, photo:photos[s.dogId]?.photo, photoColor: isPackage ? "#C1712C" : "#AACC71" }} size={64} />
                   <div style={{ minWidth:0 }}>
                     <div style={{ fontSize:15, fontWeight:800, color:"#F2EEDD", marginBottom:2 }}>{s.dogName}</div>
+                    {photos[s.dogId]?.breed && <div style={{ fontSize:12, color:"#AACC71", fontWeight:700, marginBottom:1 }}>{photos[s.dogId].breed}</div>}
                     <div style={{ fontSize:11, color:"rgba(242,238,221,0.5)" }}>{s.ownerName}</div>
                   </div>
                 </div>
@@ -1674,7 +1675,7 @@ function DaycarePanel({ dark, currentUser, dogs }) {
                     <DogAvatar dog={dog} size={36} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}</div>
-                      <div style={{ fontSize:12, color:t.text2 }}>{dog.owner}{dog.phone ? " · " + dog.phone : ""}</div>
+                      <div style={{ fontSize:12, color:t.text2 }}>{dog.breed ? dog.breed + " · " : ""}{dog.owner}{dog.phone ? " · " + dog.phone : ""}</div>
                     </div>
                     {hasPackage
                       ? <span style={{ background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800 }}>★ Paquete</span>
@@ -1725,7 +1726,7 @@ function DaycarePanel({ dark, currentUser, dogs }) {
                           {s.dogName}
                           {isGold && <span style={{ background:"linear-gradient(135deg,#C1712C,#F8D061)", color:"white", borderRadius:99, padding:"1px 8px", fontSize:9, fontWeight:800 }}>★ PKG</span>}
                         </div>
-                        <div style={{ fontSize:11, color:t.text2 }}>{s.ownerName}</div>
+                        <div style={{ fontSize:11, color:t.text2 }}>{(() => { const b = dogs.find(d=>d.id===s.dogId)?.breed; return b ? <span style={{ color:t.acc, fontWeight:700 }}>{b} · </span> : null; })()}{s.ownerName}</div>
                       </div>
                       {isPaused && <span style={{ background:t.surf2, color:t.text3, borderRadius:99, padding:"2px 8px", fontSize:9, fontWeight:800 }}>PAUSA</span>}
                     </div>
@@ -1768,7 +1769,7 @@ function DaycarePanel({ dark, currentUser, dogs }) {
                 <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderRadius:14, background:t.surf, border:"1px solid "+t.bord }}>
                   <DogAvatar dog={{name:s.dogName, photo:dogs.find(d=>d.id===s.dogId)?.photo, photoColor:"#888"}} size={40} />
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{s.dogName} <span style={{ color:t.text3, fontSize:11 }}>· {s.ownerName}</span></div>
+                    <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{s.dogName} <span style={{ color:t.text3, fontSize:11 }}>{(() => { const b = dogs.find(d=>d.id===s.dogId)?.breed; return b ? "· " + b + " " : ""; })()}· {s.ownerName}</span></div>
                     <div style={{ fontSize:11, color:t.text2 }}>{checkInTime} → {checkOutTime} · {fmtElapsed(elapsed)}</div>
                   </div>
                   <div style={{ textAlign:"right" }}>
