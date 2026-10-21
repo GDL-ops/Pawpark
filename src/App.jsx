@@ -250,6 +250,9 @@ function BehBadge({ result, sm }) {
 
 function DogAvatar({ dog, size=44 }) {
   const c = dog.photoColor || "#AACC71";
+  if (dog.photo) return (
+    <img src={dog.photo} alt={dog.name || "Perrito"} style={{ width:size, height:size, borderRadius:"50%", objectFit:"cover", flexShrink:0, border:"2px solid " + c, boxShadow:"0 2px 8px " + c + "50", background:c }} />
+  );
   return (
     <div style={{ width:size, height:size, borderRadius:"50%", background:"linear-gradient(135deg," + c + "," + c + "99)", display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontWeight:800, fontSize:size*0.34, flexShrink:0, boxShadow:"0 2px 8px " + c + "50" }}>
       {dog.name?.slice(0,2).toUpperCase() || "🐕"}
@@ -350,6 +353,59 @@ function Card({ children, style={}, onClick, dark }) {
 // ---- PDF Upload --------------------------------------------------------------
 // Firestore limita cada documento a 1MB, asi que el PDF se guarda aparte en la
 // coleccion "files", partido en pedazos. El expediente solo guarda nombre, fecha y fileId.
+// Foto del perrito: se recorta cuadrada y se reduce a 240px para que pese poco (~15KB) y se guarde dentro del expediente.
+async function resizePhoto(f, max=240) {
+  const dataUrl = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = ev => res(ev.target.result);
+    r.onerror = () => rej(new Error("No se pudo leer la foto"));
+    r.readAsDataURL(f);
+  });
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = () => rej(new Error("Formato de imagen no soportado"));
+    i.src = dataUrl;
+  });
+  const side = Math.min(img.width, img.height);
+  const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+  const out = Math.min(max, side);
+  const canvas = document.createElement("canvas");
+  canvas.width = out; canvas.height = out;
+  canvas.getContext("2d").drawImage(img, sx, sy, side, side, 0, 0, out, out);
+  return canvas.toDataURL("image/jpeg", 0.8);
+}
+
+function PhotoUpload({ dog, onChange, dark }) {
+  const t = getT(dark);
+  const ref = useRef();
+  const [busy, setBusy] = useState(false);
+  const hf = async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    if (!f.type.startsWith("image/")) { alert("Selecciona una imagen"); return; }
+    setBusy(true);
+    try { onChange(await resizePhoto(f)); }
+    catch (err) { console.error(err); alert("No se pudo cargar la foto: " + err.message); }
+    setBusy(false);
+  };
+  const btn = { padding:"7px 13px", borderRadius:9, fontSize:12, fontWeight:700, cursor: busy ? "wait" : "pointer" };
+  return (
+    <div>
+      <Lbl dark={dark}>FOTO DEL PERRITO</Lbl>
+      <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+        <DogAvatar dog={dog} size={72} />
+        <input ref={ref} type="file" accept="image/*" style={{ display:"none" }} onChange={hf} />
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          <button type="button" disabled={busy} onClick={() => ref.current.click()} style={{ ...btn, border:"1.5px solid " + t.acc, background:t.accBg, color:t.accD }}>
+            {busy ? "Cargando..." : dog.photo ? "Cambiar foto" : "📷 Subir foto"}
+          </button>
+          {dog.photo && !busy && <button type="button" onClick={() => onChange("")} style={{ ...btn, border:"1px solid #FECACA", background:"#FEF2F2", color:"#EF4444" }}>Quitar</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const FILE_CHUNK = 700000;
 
 async function uploadPdf(f) {
@@ -934,6 +990,7 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
         {tab === "perrito" && (
           <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
             {ro("perrito") && <ROBanner dark={dark} />}
+            {!ro("perrito") && <PhotoUpload dark={dark} dog={dog} onChange={v=>set("photo",v)} />}
             {!ro("perrito") && <div><Lbl dark={dark}>COLOR DE AVATAR</Lbl><div style={{ display:"flex", gap:8 }}>{COLORS.map(c2 => <div key={c2} onClick={() => set("photoColor",c2)} style={{ width:26,height:26,borderRadius:"50%",background:c2,cursor:"pointer",border:dog.photoColor===c2?"3px solid white":"3px solid transparent",boxSizing:"border-box" }} />)}</div></div>}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               <Field dark={dark} label="NOMBRE" value={dog.name} onChange={ro("perrito")?null:v=>set("name",v)} placeholder="Max" />
@@ -1386,6 +1443,14 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
 function PublicDaycarePanel() {
   const [sessions, setSessions] = useState([]);
   const [tick, setTick] = useState(0);
+  const [photos, setPhotos] = useState({});
+
+  useEffect(() => {
+    const missing = [...new Set(sessions.map(s => s.dogId).filter(id => id && !(id in photos)))];
+    if (!missing.length) return;
+    Promise.all(missing.map(id => getDoc(doc(db, "dogs", id)).then(d => [id, d.exists() ? (d.data().photo || "") : ""]).catch(() => [id, ""])))
+      .then(entries => setPhotos(p => ({ ...p, ...Object.fromEntries(entries) })));
+  }, [sessions]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "daycare_sessions"), snap => {
@@ -1448,8 +1513,13 @@ function PublicDaycarePanel() {
               }}>
                 {isPackage && <div style={{ position:"absolute", top:10, right:10, background:"linear-gradient(135deg,#C1712C,#F8D061)", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800, color:"white" }}>★ PAQUETE</div>}
                 {isPaused && <div style={{ position:"absolute", top:10, right:10, background:"rgba(255,255,255,0.15)", borderRadius:99, padding:"2px 10px", fontSize:10, fontWeight:800, color:"#aaa" }}>PAUSA</div>}
-                <div style={{ fontSize:15, fontWeight:800, color:"#F2EEDD", marginBottom:2 }}>{s.dogName}</div>
-                <div style={{ fontSize:11, color:"rgba(242,238,221,0.5)", marginBottom:14 }}>{s.ownerName}</div>
+                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+                  <DogAvatar dog={{ name:s.dogName, photo:photos[s.dogId], photoColor: isPackage ? "#C1712C" : "#AACC71" }} size={64} />
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:15, fontWeight:800, color:"#F2EEDD", marginBottom:2 }}>{s.dogName}</div>
+                    <div style={{ fontSize:11, color:"rgba(242,238,221,0.5)" }}>{s.ownerName}</div>
+                  </div>
+                </div>
                 <div style={{ fontSize:42, fontWeight:900, color: isPaused ? "#888" : isPackage ? "#F8D061" : "#AACC71", fontFamily:"monospace", lineHeight:1, marginBottom:8 }}>
                   {fmtElapsed(elapsed)}
                 </div>
@@ -1649,7 +1719,7 @@ function DaycarePanel({ dark, currentUser, dogs }) {
                   <div style={{ height:5, background: isGold ? "linear-gradient(90deg,#C1712C,#F8D061)" : isPaused ? "#555" : "linear-gradient(90deg,#143B31,#AACC71)", width:pct+"%", transition:"width 1s linear" }} />
                   <div style={{ padding:"14px 16px" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-                      <DogAvatar dog={{name:s.dogName, photoColor: isGold?"#C1712C":"#AACC71"}} size={40} />
+                      <DogAvatar dog={{name:s.dogName, photo:dogs.find(d=>d.id===s.dogId)?.photo, photoColor: isGold?"#C1712C":"#AACC71"}} size={52} />
                       <div style={{ flex:1 }}>
                         <div style={{ fontWeight:800, fontSize:14, color:t.text, display:"flex", alignItems:"center", gap:6 }}>
                           {s.dogName}
@@ -1696,7 +1766,7 @@ function DaycarePanel({ dark, currentUser, dogs }) {
               const checkOutTime = new Date(s.checkOut).toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
               return (
                 <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderRadius:14, background:t.surf, border:"1px solid "+t.bord }}>
-                  <DogAvatar dog={{name:s.dogName, photoColor:"#888"}} size={36} />
+                  <DogAvatar dog={{name:s.dogName, photo:dogs.find(d=>d.id===s.dogId)?.photo, photoColor:"#888"}} size={40} />
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:700, fontSize:13, color:t.text }}>{s.dogName} <span style={{ color:t.text3, fontSize:11 }}>· {s.ownerName}</span></div>
                     <div style={{ fontSize:11, color:t.text2 }}>{checkInTime} → {checkOutTime} · {fmtElapsed(elapsed)}</div>
