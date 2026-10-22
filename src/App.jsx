@@ -790,13 +790,20 @@ function stayNights(stay) {
 const money = v => { const n = parseFloat(String(v ?? "").replace(/[^0-9.]/g, "")); return isNaN(n) ? 0 : n; };
 const fmtMoney = n => "$" + (n || 0).toLocaleString("es-MX", { minimumFractionDigits:2, maximumFractionDigits:2 });
 const stayRemaining = stay => Math.max(0, money(stay?.total) - money(stay?.deposit));
-// Precio por noche de hotel según el tamaño (calculado con el peso). null = sin precio definido: se escribe a mano.
-const HOTEL_RATES = { "Pequeño":null, "Mediano":null, "Grande":null, "Extra grande":null };
+// Precio por noche de hotel según el tamaño (calculado con el peso) y la duración de la estancia.
+// Se usa la primera tarifa cuyo mínimo de noches se cumpla.
+const HOTEL_RATE_TIERS = [
+  { minNights:30, label:"mensual (30+ noches)", rates:{ "Pequeño":211, "Mediano":234, "Grande":273, "Extra grande":312 } },
+  { minNights:7,  label:"semanal (7+ noches)",  rates:{ "Pequeño":238, "Mediano":267, "Grande":315, "Extra grande":360 } },
+  { minNights:0,  label:"por noche",            rates:{ "Pequeño":270, "Mediano":300, "Grande":350, "Extra grande":400 } },
+];
 // Extras rápidos que se pueden sumar (amount null = se escribe el monto).
 const HOTEL_EXTRAS = [{ label:"Baño", amount:null }];
-function hotelRateFor(dog) {
+function hotelRateFor(dog, nights = 0) {
   const sz = dogSize(dog?.weight);
-  return { size: sz?.label || null, kg: parseWeightKg(dog?.weight), rate: sz ? HOTEL_RATES[sz.label] : null };
+  const tier = HOTEL_RATE_TIERS.find(t => (nights || 0) >= t.minNights);
+  const rate = sz && tier ? tier.rates[sz.label] ?? null : null;
+  return { size: sz?.label || null, kg: parseWeightKg(dog?.weight), rate, tier: rate != null ? tier.label : null };
 }
 const hasRate = stay => String(stay?.nightlyRate ?? "").trim() !== "";
 const extrasTotal = stay => (stay?.extras || []).reduce((a, e) => a + money(e.amount), 0);
@@ -827,7 +834,7 @@ function newHotelStay(dog) {
   return {
     id: mkId(), checkIn: todayYMD(), checkOut: "", notes: "", incidents: [],
     total: "", deposit: "", paid: false, cage: "", camera: "",
-    nightlyRate: dog && hotelRateFor(dog).rate != null ? String(hotelRateFor(dog).rate) : "", extras: [],
+    nightlyRate: dog && hotelRateFor(dog).rate != null ? String(hotelRateFor(dog).rate) : "", rateAuto: true, extras: [],
     belongings: Object.fromEntries(BELONGINGS.map(b => [b.id, { checked:false, desc:"" }])),
     feeding: dog ? defaultFeedingText(dog) : "",
     vetName: dog?.emergencyVet || "", vetPhone: dog?.emergencyVetPhone || "",
@@ -925,13 +932,16 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
   const setBel = (id, k, v) => setStay(s => ({ ...s, belongings: { ...s.belongings, [id]: { ...s.belongings[id], [k]: v } } }));
   const pickDog = d => {
     setDogId(d.id); setQuery("");
-    const r = hotelRateFor(d).rate;
-    setStay(s => ({ ...s, nightlyRate: hasRate(s) ? s.nightlyRate : (r != null ? String(r) : ""), feeding: s.feeding || defaultFeedingText(d), vetName: s.vetName || d.emergencyVet || "", vetPhone: s.vetPhone || d.emergencyVetPhone || "", emergencyName: s.emergencyName || d.owner || "", emergencyPhone: s.emergencyPhone || d.phone || "" }));
+    setStay(s => { const r = hotelRateFor(d, stayNights(s)).rate; return { ...s, nightlyRate: (s.rateAuto !== false || !hasRate(s)) && r != null ? String(r) : s.nightlyRate, rateAuto: r != null ? (s.rateAuto !== false || !hasRate(s)) : false, feeding: s.feeding || defaultFeedingText(d), vetName: s.vetName || d.emergencyVet || "", vetPhone: s.vetPhone || d.emergencyVetPhone || "", emergencyName: s.emergencyName || d.owner || "", emergencyPhone: s.emergencyPhone || d.phone || "" }; });
   };
   const matches = query.trim() ? dogs.filter(d => [d.name, d.owner].some(f => f?.toLowerCase().includes(query.trim().toLowerCase()))).slice(0, 8) : [];
   const nights = stayNights(stay);
   const eff = withCalcTotal(stay);
-  const rateInfo = dog ? hotelRateFor(dog) : null;
+  const rateInfo = dog ? hotelRateFor(dog, nights) : null;
+  // Al cambiar las fechas, la tarifa automática se ajusta (por noche, semanal o mensual).
+  useEffect(() => {
+    if (stay.rateAuto && rateInfo?.rate != null && money(stay.nightlyRate) !== rateInfo.rate) set("nightlyRate", String(rateInfo.rate));
+  }, [nights, dogId]);
   const addExtra = (label = "", amount = null) => setStay(s => ({ ...s, extras: [...(s.extras || []), { id: mkId(), label, amount: amount != null ? String(amount) : "" }] }));
   const setExtra = (id, k, v) => setStay(s => ({ ...s, extras: (s.extras || []).map(e => e.id === id ? { ...e, [k]: v } : e) }));
   const delExtra = id => setStay(s => ({ ...s, extras: (s.extras || []).filter(e => e.id !== id) }));
@@ -987,11 +997,11 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
           {/* Precio */}
           <div style={{ background:t.surf, border:"1px solid " + t.bord, borderRadius:11, padding:"12px 13px", display:"flex", flexDirection:"column", gap:10 }}>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:11, alignItems:"end" }}>
-              <Field dark={dark} label="PRECIO POR NOCHE ($)" value={stay.nightlyRate} onChange={v => set("nightlyRate", v.replace(/[^0-9.]/g, ""))} placeholder="$" />
+              <Field dark={dark} label="PRECIO POR NOCHE ($)" value={stay.nightlyRate} onChange={v => setStay(s => ({ ...s, nightlyRate: v.replace(/[^0-9.]/g, ""), rateAuto: false }))} placeholder="$" />
               <div style={{ fontSize:11, color:t.text3, lineHeight:1.4, paddingBottom:4 }}>
                 {!dog ? "Elige al perrito para calcular" :
                   rateInfo?.size ? <>Tamaño <b style={{ color:t.text }}>{rateInfo.size}</b> ({rateInfo.kg} kg){rateInfo.rate != null
-                    ? <> · tarifa {fmtMoney(rateInfo.rate)}{money(stay.nightlyRate) !== rateInfo.rate && <> · <button type="button" onClick={() => set("nightlyRate", String(rateInfo.rate))} style={{ border:"none", background:"none", color:t.acc, fontWeight:800, cursor:"pointer", padding:0, fontSize:11 }}>usar tarifa</button></>}</>
+                    ? <> · tarifa {rateInfo.tier} {fmtMoney(rateInfo.rate)}{money(stay.nightlyRate) !== rateInfo.rate && <> · <button type="button" onClick={() => setStay(s => ({ ...s, nightlyRate: String(rateInfo.rate), rateAuto: true }))} style={{ border:"none", background:"none", color:t.acc, fontWeight:800, cursor:"pointer", padding:0, fontSize:11 }}>usar tarifa</button></>}</>
                     : " · sin tarifa definida, escríbela"}</>
                   : <>Sin peso registrado: escribe el precio por noche</>}
               </div>
