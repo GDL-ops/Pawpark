@@ -970,9 +970,8 @@ function acomodoHtml(all, day) {
   const rows = roomsOnDay(all, day);
   const dateTitle = (() => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day); return m ? (+m[3]) + " de " + MONTHS_ES[+m[2] - 1].toLowerCase() + " " + m[1] : day; })();
   const who = occ => occ.map(({ dog, stay }) => {
-    const sz = dogSize(dog.weight)?.label;
     const tag = stay.checkOut === day ? " (sale hoy)" : stay.checkIn === day ? " (llega hoy)" : "";
-    return '<b>' + escHtml(dog.name) + '</b>' + (dog.breed || sz ? ' <span class="sm">' + escHtml([dog.breed, sz].filter(Boolean).join(" · ")) + '</span>' : '') + '<span class="sm">' + tag + '</span>';
+    return '<b>' + escHtml(dog.name) + '</b>' + (dog.breed ? ' <span class="sm">' + escHtml(dog.breed) + '</span>' : '') + '<span class="sm">' + tag + '</span>';
   }).join("<br>");
   const salida = occ => occ.map(({ stay }) => fmtShortDate(stay.checkOut)).filter(Boolean).join("<br>");
   const body = rows.map(({ room, occ }) =>
@@ -1130,10 +1129,9 @@ function AcomodoView({ all, dark, onEdit }) {
                   <td style={td}>{occ.map(({ dog, stay }) => (
                     <div key={stay.id} onClick={() => onEdit(dog, stay)} style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer", padding:"1px 0" }}>
                       <DogAvatar dog={dog} size={22} /><b>{dog.name}</b>
-                      <span style={{ fontSize:11, color:t.text3 }}>{[dog.breed, dogSize(dog.weight)?.label].filter(Boolean).join(" · ")}</span>
+                      {dog.breed && <span style={{ fontSize:11, color:t.text3 }}>{dog.breed}</span>}
                       {stay.checkOut === day && <span style={{ fontSize:10, fontWeight:800, color:"#C2410C" }}>SALE HOY</span>}
                       {stay.checkIn === day && <span style={{ fontSize:10, fontWeight:800, color:"#15803D" }}>LLEGA HOY</span>}
-                      {room.upper && BIG_SIZES.has(dogSize(dog.weight)?.label) && <span title="Perrito grande arriba" style={{ fontSize:10, fontWeight:700, color:t.text3 }}>(grande arriba)</span>}
                     </div>
                   ))}</td>
                   <td style={{ ...td, textAlign:"center", fontWeight:800 }}>{room.label}</td>
