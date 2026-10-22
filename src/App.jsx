@@ -948,14 +948,15 @@ function roomOccupants(all, roomId, range, excludeId) {
 function freeRooms(all, range, excludeId) {
   return HOTEL_ROOMS.filter(r => !r.special && roomOccupants(all, r.id, range, excludeId).length === 0);
 }
-// Abajo primero para todos; con cámara solo si la pidieron (para guardarlas). Arriba solo pequeños y medianos.
+// Abajo primero para todos; con cámara solo si la pidieron (para guardarlas). Arriba de preferencia pequeños y medianos;
+// con alta demanda (abajo lleno) también se acomodan grandes arriba.
 function suggestRoom(all, range, dog, wantsCamera, excludeId) {
   const free = freeRooms(all, range, excludeId);
   const lower = free.filter(r => !r.upper), upper = free.filter(r => r.upper);
   const big = BIG_SIZES.has(dogSize(dog?.weight)?.label);
   const order = wantsCamera
     ? [...lower.filter(r => r.camera)]
-    : [...lower.filter(r => !r.camera), ...lower.filter(r => r.camera), ...(big ? [] : upper)];
+    : [...lower.filter(r => !r.camera), ...lower.filter(r => r.camera), ...upper];
   return order[0] || null;
 }
 const fmtShortDate = ds => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ds || ""); return m ? (+m[3]) + " " + MONTHS_ES[+m[2] - 1].slice(0, 3).toLowerCase() : ""; };
@@ -1027,15 +1028,15 @@ function RoomPicker({ all, stay, dog, onPick, onCamera, dark }) {
     const occ = ready ? roomOccupants(all, r.id, range, stay.id) : [];
     const on = cur?.id === r.id;
     const busy = occ.length > 0;
-    const notRec = !busy && r.upper && big;
+    const notRec = !busy && r.upper && big && freeLower.length > 0;
     const bg = on ? (busy ? "#FEE2E2" : "#143B31") : busy ? (dark ? "#2a2a2a" : "#E5E7EB") : notRec ? "#FFF7ED" : (dark ? "#14301F" : "#ECFDF5");
     const col = on && !busy ? "white" : busy ? t.text3 : t.text;
     return (
       <button key={r.id} type="button" onClick={() => onPick(on ? "" : r.id)}
-        title={busy ? "Ocupada: " + occ.map(o => o.dog.name + " (" + fmtDMY(o.stay.checkIn) + "–" + fmtDMY(o.stay.checkOut) + ")").join(", ") : notRec ? "Arriba: no recomendada para perritos grandes" : "Disponible"}
+        title={busy ? "Ocupada: " + occ.map(o => o.dog.name + " (" + fmtDMY(o.stay.checkIn) + "–" + fmtDMY(o.stay.checkOut) + ")").join(", ") : notRec ? "Arriba: mejor abajo mientras haya lugar" : "Disponible"}
         style={{ minWidth: r.special ? 104 : 46, padding:"5px 4px", borderRadius:8, border:"1.5px solid " + (on ? (busy ? "#EF4444" : "#143B31") : r.camera ? "#3B82F6" : t.bord), background:bg, color:col, cursor:"pointer", fontSize:12, fontWeight:800, lineHeight:1.15, textAlign:"center" }}>
         {r.label}{r.camera && " 📷"}
-        <div style={{ fontSize:9, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth: r.special ? 96 : 44 }}>{busy ? occ[0].dog.name : notRec ? "grande ✗" : ""}</div>
+        <div style={{ fontSize:9, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth: r.special ? 96 : 44 }}>{busy ? occ[0].dog.name : notRec ? "mejor abajo" : ""}</div>
       </button>
     );
   };
@@ -1053,7 +1054,7 @@ function RoomPicker({ all, stay, dog, onPick, onCamera, dark }) {
             ? <>✓ Hay disponibilidad: {free.length} jaula{free.length !== 1 ? "s" : ""} libre{free.length !== 1 ? "s" : ""} ({freeLower.length} abajo, {free.length - freeLower.length} arriba · {freeCam.length} con cámara){!stay.checkOut && " · sin fecha de salida, se revisa desde la entrada en adelante"}</>
             : <>✗ No hay jaulas disponibles en esas fechas</>}
           {stay.wantsCamera && freeCam.length === 0 && free.length > 0 && <div style={{ color:"#B91C1C" }}>No hay jaulas con cámara libres en esas fechas.</div>}
-          {big && freeLower.length === 0 && free.length > 0 && <div style={{ color:"#C2410C" }}>Solo quedan jaulas arriba; no se recomiendan para perritos grandes.</div>}
+          {big && freeLower.length === 0 && free.length > 0 && <div style={{ color:"#C2410C" }}>Alta demanda: abajo está lleno, se puede acomodar arriba.</div>}
         </div>
       )}
       {curConflict.length > 0 && <div style={{ fontSize:12, fontWeight:800, color:"#B91C1C" }}>⚠ {roomLabel(cur.id)} ya está ocupada por {curConflict.map(o => o.dog.name + " (" + fmtDMY(o.stay.checkIn) + " al " + fmtDMY(o.stay.checkOut) + ")").join(", ")}</div>}
@@ -1062,12 +1063,12 @@ function RoomPicker({ all, stay, dog, onPick, onCamera, dark }) {
           <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
             {sug && sug.id !== cur?.id && <button type="button" onClick={() => onPick(sug.id)} style={{ padding:"5px 12px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontSize:12, fontWeight:800, cursor:"pointer" }}>Asignar sugerida: {roomLabel(sug.id)}{sug.camera ? " 📷" : ""}</button>}
             <div style={{ display:"flex", gap:10, flexWrap:"wrap", fontSize:10, color:t.text3 }}>
-              {legend(dark ? "#14301F" : "#ECFDF5", t.bord, "Libre")}{legend(dark ? "#2a2a2a" : "#E5E7EB", t.bord, "Ocupada")}{legend("#FFF7ED", t.bord, "Arriba, no para grandes")}{legend(t.surf, "#3B82F6", "Con cámara")}
+              {legend(dark ? "#14301F" : "#ECFDF5", t.bord, "Libre")}{legend(dark ? "#2a2a2a" : "#E5E7EB", t.bord, "Ocupada")}{big && freeLower.length > 0 && legend("#FFF7ED", t.bord, "Arriba: mejor abajo mientras haya lugar")}{legend(t.surf, "#3B82F6", "Con cámara")}
             </div>
           </div>
           <div style={{ fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.06em" }}>ABAJO (1–{UPPER_FROM - 1})</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => !r.special && !r.upper).map(cell)}</div>
-          <div style={{ fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.06em" }}>ARRIBA ({UPPER_FROM}–28) · pequeños y medianos</div>
+          <div style={{ fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.06em" }}>ARRIBA ({UPPER_FROM}–28) · de preferencia pequeños y medianos</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => !r.special && r.upper).map(cell)}</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => r.special).map(cell)}</div>
         </>
@@ -1102,7 +1103,7 @@ function AcomodoView({ all, dark, onEdit }) {
             {qFree.length ? <>✓ Sí hay disponibilidad: {qFree.length} jaula{qFree.length !== 1 ? "s" : ""} libre{qFree.length !== 1 ? "s" : ""} del {fmtDMY(qIn)} al {fmtDMY(qOut)}</> : <>✗ No hay jaulas disponibles del {fmtDMY(qIn)} al {fmtDMY(qOut)}</>}
             {qFree.length > 0 && <div style={{ fontWeight:600, fontSize:12, color:t.text2 }}>
               <div>Abajo: {qFree.filter(r => !r.upper).map(r => r.label + (r.camera ? "📷" : "")).join(", ") || "ninguna"}</div>
-              <div>Arriba (pequeños y medianos): {qFree.filter(r => r.upper).map(r => r.label).join(", ") || "ninguna"}</div>
+              <div>Arriba (de preferencia pequeños y medianos): {qFree.filter(r => r.upper).map(r => r.label).join(", ") || "ninguna"}</div>
               <div>Con cámara: {qFree.filter(r => r.camera).map(r => r.label).join(", ") || "ninguna"}</div>
             </div>}
           </div>
@@ -1123,7 +1124,7 @@ function AcomodoView({ all, dark, onEdit }) {
           <tbody>
             {rows.map(({ room, occ }) => (
               <Fragment key={room.id}>
-                {room.id === String(UPPER_FROM) && <tr><td colSpan={4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>ARRIBA (JAULAS {UPPER_FROM}–28) · PEQUEÑOS Y MEDIANOS</td></tr>}
+                {room.id === String(UPPER_FROM) && <tr><td colSpan={4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>ARRIBA (JAULAS {UPPER_FROM}–28) · DE PREFERENCIA PEQUEÑOS Y MEDIANOS</td></tr>}
                 {room.id === "vet" && <tr><td colSpan={4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>OTROS</td></tr>}
                 <tr style={{ background: occ.length > 1 ? "#FEF2F2" : occ.length ? (dark ? "#14301F" : "#F3F9EC") : "transparent" }}>
                   <td style={td}>{occ.map(({ dog, stay }) => (
@@ -1132,7 +1133,7 @@ function AcomodoView({ all, dark, onEdit }) {
                       <span style={{ fontSize:11, color:t.text3 }}>{[dog.breed, dogSize(dog.weight)?.label].filter(Boolean).join(" · ")}</span>
                       {stay.checkOut === day && <span style={{ fontSize:10, fontWeight:800, color:"#C2410C" }}>SALE HOY</span>}
                       {stay.checkIn === day && <span style={{ fontSize:10, fontWeight:800, color:"#15803D" }}>LLEGA HOY</span>}
-                      {room.upper && BIG_SIZES.has(dogSize(dog.weight)?.label) && <span title="Perrito grande arriba" style={{ fontSize:10, fontWeight:800, color:"#C2410C" }}>⚠ grande arriba</span>}
+                      {room.upper && BIG_SIZES.has(dogSize(dog.weight)?.label) && <span title="Perrito grande arriba" style={{ fontSize:10, fontWeight:700, color:t.text3 }}>(grande arriba)</span>}
                     </div>
                   ))}</td>
                   <td style={{ ...td, textAlign:"center", fontWeight:800 }}>{room.label}</td>
