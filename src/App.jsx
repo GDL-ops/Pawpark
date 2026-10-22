@@ -37,6 +37,8 @@ const VST = {
   soon:   { label:"Por vencer",   color:"#AACC71", bg:"#E8F0DC" },
   ok:     { label:"Al dia",       color:"#22C55E", bg:"#F0FDF4" },
   none:   { label:"Sin registro", color:"#9CA3AF", bg:"#F9FAFB" },
+  notreg: { label:"No registrado", color:"#6B7280", bg:"#F3F4F6" },
+  nocard: { label:"Sin cartilla",  color:"#F97316", bg:"#FFF7ED" },
 };
 const SUPV = { bajo:{label:"BAJO",color:"#22C55E",bg:"#F0FDF4"}, medio:{label:"MEDIO",color:"#AACC71",bg:"#E8F0DC"}, alto:{label:"ALTO",color:"#EF4444",bg:"#FEF2F2"} };
 const HOME_PANELS = [{id:"dashboard",label:"Panel General",icon:"📊"},{id:"hotel",label:"Hotel",icon:"🏨"},{id:"conducta",label:"Conducta",icon:"🎓"},{id:"grooming",label:"Grooming",icon:"✂"},{id:"guarderia",label:"Guarderia",icon:"🐾"}];
@@ -48,8 +50,9 @@ const AREAS = ["Guarderia","Hotel","Grooming","Adiestramiento","Day Pass Persona
 // ---- Helpers ----------------------------------------------------------------
 const mkId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const ddiff = ds => !ds ? null : Math.floor((new Date(ds) - new Date()) / 864e5);
-const gvs = vac => { if (!vac?.expiry) return "none"; const d = ddiff(vac.expiry); return d < 0 ? "expired" : d <= 30 ? "soon" : "ok"; };
-function ovs(dog) { const ss = VACCINES.map(v => gvs(dog.vaccinations?.[v.id])); if (ss.includes("expired")) return "expired"; if (ss.includes("none")) return "none"; if (ss.includes("soon")) return "soon"; return "ok"; }
+const gvs = vac => { if (vac?.notRegistered) return "notreg"; if (!vac?.expiry) return "none"; const d = ddiff(vac.expiry); return d < 0 ? "expired" : d <= 30 ? "soon" : "ok"; };
+// "No registrado" cuenta como faltante; si no entregó cartilla, el estado general es "Sin cartilla".
+function ovs(dog) { if (dog.noVaccineCard) return "nocard"; const ss = VACCINES.map(v => gvs(dog.vaccinations?.[v.id])).map(x => x === "notreg" ? "none" : x); if (ss.includes("expired")) return "expired"; if (ss.includes("none")) return "none"; if (ss.includes("soon")) return "soon"; return "ok"; }
 // Una sola responsiva Guarderia/Hotel. Se guarda en responsivas.guarderia; si un perrito solo tiene la antigua de hotel, se usa esa.
 const respKey = resp => resp?.guarderia?.name ? "guarderia" : resp?.hotel?.name ? "hotel" : "guarderia";
 const respFile = resp => resp?.[respKey(resp)] || null;
@@ -203,6 +206,12 @@ function calcAge(birthdate) {
     return m === 1 ? "1 mes" : m + " meses";
   }
   return years === 1 ? "1 año" : years + " años";
+}
+
+// Edad a mostrar: manual (texto capturado) o automática (calculada con la fecha de nacimiento).
+function dogAge(dog) {
+  if (dog.ageMode === "manual") return dog.age || null;
+  return dog.birthdate ? calcAge(dog.birthdate) : (dog.age || null);
 }
 
 function ageFromText(ageStr) {
@@ -625,10 +634,14 @@ function DatePicker({ value, onChange, label, dark }) {
 function VacRow({ vac, label, icon, onChange, dark }) {
   const t = getT(dark);
   const s = gvs(vac); const m = VST[s]; const diff = vac?.expiry ? ddiff(vac.expiry) : null; const ro = !onChange;
+  const nr = !!vac?.notRegistered;
   return (
     <div style={{ display:"grid", gridTemplateColumns:"1fr 150px 150px 120px", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:11, background:m.bg, border:"1px solid " + m.color + "25" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:8 }}><span style={{ fontSize:16 }}>{icon}</span><span style={{ fontWeight:600, fontSize:13, color:t.text }}>{label}</span></div>
-      {ro ? (<><span style={{ fontSize:12, color:t.text2 }}>{vac?.applied||"—"}</span><span style={{ fontSize:12, color:t.text2 }}>{vac?.expiry||"—"}</span></>) : (
+      <div>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}><span style={{ fontSize:16 }}>{icon}</span><span style={{ fontWeight:600, fontSize:13, color:t.text }}>{label}</span></div>
+        {!ro && <label style={{ display:"inline-flex", alignItems:"center", gap:5, marginTop:4, fontSize:11, color:t.text2, cursor:"pointer" }}><input type="checkbox" checked={nr} onChange={e=>onChange("notRegistered",e.target.checked)} />No registrado</label>}
+      </div>
+      {nr ? <div style={{ gridColumn:"span 2", fontSize:12, color:t.text3, fontStyle:"italic" }}>Vacuna no registrada en la cartilla</div> : ro ? (<><span style={{ fontSize:12, color:t.text2 }}>{vac?.applied||"—"}</span><span style={{ fontSize:12, color:t.text2 }}>{vac?.expiry||"—"}</span></>) : (
         <>
           <div><label style={{ display:"block", fontSize:10, color:t.text3, marginBottom:2 }}>APLICACION</label><input type="date" value={vac?.applied||""} onChange={e=>onChange("applied",e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:8, border:"1px solid " + t.acc, fontSize:12, background:t.surf, outline:"none", color:t.text }} /></div>
           <div><label style={{ display:"block", fontSize:10, color:t.text3, marginBottom:2 }}>VENCIMIENTO</label><input type="date" value={vac?.expiry||""} onChange={e=>onChange("expiry",e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:8, border:"1px solid " + t.acc, fontSize:12, background:t.surf, outline:"none", color:t.text }} /></div>
@@ -636,7 +649,7 @@ function VacRow({ vac, label, icon, onChange, dark }) {
       )}
       <div style={{ textAlign:"right" }}>
         <VacBadge status={s} />
-        {diff !== null && s !== "ok" && <div style={{ fontSize:10, color:m.color, marginTop:3, fontWeight:600 }}>{diff < 0 ? "Hace " + Math.abs(diff) + "d" : "En " + diff + "d"}</div>}
+        {diff !== null && !nr && s !== "ok" && <div style={{ fontSize:10, color:m.color, marginTop:3, fontWeight:600 }}>{diff < 0 ? "Hace " + Math.abs(diff) + "d" : "En " + diff + "d"}</div>}
       </div>
     </div>
   );
@@ -1097,10 +1110,19 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
               <div><Lbl dark={dark}>RAZA</Lbl><input list="pp-breeds" value={dog.breed||""} onChange={e=>!ro("perrito")&&set("breed",e.target.value)} placeholder="Escribe o elige la raza" disabled={ro("perrito")} style={inp(dark, ro("perrito"))} /><datalist id="pp-breeds">{BREEDS.filter(b=>b!=="Otro").map(b=><option key={b} value={b} />)}</datalist></div>
               <Radio dark={dark} label="SEXO" value={dog.sex} onChange={ro("perrito")?null:v=>set("sex",v)} options={[{value:"Macho",label:"Macho"},{value:"Hembra",label:"Hembra"}]} disabled={ro("perrito")} />
               <div>
-                <Lbl dark={dark}>EDAD</Lbl>
-                <div style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid "+t.bord, fontSize:13, background:t.surf2, color:dog.birthdate?t.text:t.text3, boxSizing:"border-box" }}>
-                  {dog.birthdate ? (calcAge(dog.birthdate)||"—") + " (calculado)" : "Se calcula con la fecha de nacimiento"}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:6 }}>
+                  <Lbl dark={dark}>EDAD</Lbl>
+                  {!ro("perrito") && <div style={{ display:"flex", gap:3, marginBottom:5 }}>
+                    {[["auto","Automática"],["manual","Manual"]].map(([k,l]) => { const on = (dog.ageMode||"auto")===k; return (
+                      <button key={k} type="button" onClick={()=>set("ageMode",k)} style={{ padding:"2px 8px", borderRadius:99, fontSize:10, fontWeight:700, cursor:"pointer", border:"1px solid "+(on?t.acc:t.bord), background:on?t.accBg:"transparent", color:on?t.accD:t.text3 }}>{l}</button>
+                    ); })}
+                  </div>}
                 </div>
+                {dog.ageMode === "manual"
+                  ? <input value={dog.age||""} onChange={e=>!ro("perrito")&&set("age",e.target.value)} placeholder="Ej. 3 años, 8 meses" disabled={ro("perrito")} style={inp(dark, ro("perrito"))} />
+                  : <div style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid "+t.bord, fontSize:13, background:t.surf2, color:dog.birthdate?t.text:t.text3, boxSizing:"border-box" }}>
+                      {dog.birthdate ? (calcAge(dog.birthdate)||"—") + " (calculado)" : "Se calcula con la fecha de nacimiento"}
+                    </div>}
               </div>
               <div>
                 <Field dark={dark} label="PESO (KG)" value={dog.weight} onChange={ro("perrito")?null:v=>set("weight",v)} placeholder="12 kg" />
@@ -1197,6 +1219,10 @@ function DogForm({ initial, onSave, onCancel, isAdmin, currentUser, dark }) {
         {tab === "vacunas" && (
           <div>
             {ro("vacunas") && <ROBanner dark={dark} />}
+            <label style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", marginBottom:10, borderRadius:11, background:dog.noVaccineCard?"#FFF7ED":t.surf2, border:"1.5px solid " + (dog.noVaccineCard?"#F9731660":t.bord), cursor:ro("vacunas")?"default":"pointer" }}>
+              <input type="checkbox" checked={!!dog.noVaccineCard} disabled={ro("vacunas")} onChange={e=>set("noVaccineCard",e.target.checked)} style={{ width:17, height:17 }} />
+              <div><div style={{ fontWeight:800, fontSize:13, color:dog.noVaccineCard?"#C2410C":t.text }}>No entregó cartilla de vacunación</div><div style={{ fontSize:11, color:t.text3 }}>Marca esta opción si el tutor no ha entregado la cartilla</div></div>
+            </label>
             <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
               {VACCINES.map(v => <VacRow key={v.id} dark={dark} vac={dog.vaccinations?.[v.id]} label={v.label} icon={v.icon} onChange={ro("vacunas")?null:(f,val)=>setVac(v.id,f,val)} />)}
             </div>
@@ -1449,7 +1475,7 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
             <DogAvatar dog={dog} size={62} />
             <div>
               <h2 style={{ margin:0, fontSize:20, color:t.text }}>{dog.name}</h2>
-              <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}{dog.weight?" - "+dog.weight:""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div>
+              <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dogAge(dog)?" - "+dogAge(dog):""}{dog.weight?" - "+dog.weight:""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div>
               <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.owner}{dog.phone?" - "+dog.phone:""}</div>
               {(dog.emergencyVet||dog.emergencyVetPhone)&&<div style={{ fontSize:11, color:"#8B5CF6", marginTop:2 }}>{dog.emergencyVet}{dog.emergencyVetPhone?" - "+dog.emergencyVetPhone:""}</div>}
               <div style={{ display:"flex", gap:6, marginTop:7, flexWrap:"wrap" }}>
@@ -1469,11 +1495,11 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
         </div>
         <TabBar tabs={dtabs} active={dTab} onChange={setDTab} dark={dark} />
         <div style={{ marginTop:16 }}>
-          {dTab==="perfil"&&<div style={{ display:"flex", flexDirection:"column", gap:10 }}><IGrid cols={3}><IRow dark={dark} label="NOMBRE" value={dog.name}/><IRow dark={dark} label="RAZA" value={dog.breed}/><IRow dark={dark} label="SEXO" value={dog.sex}/><IRow dark={dark} label="EDAD" value={dog.birthdate ? calcAge(dog.birthdate) : (dog.age||null)}/><IRow dark={dark} label="PESO" value={dog.weight}/><IRow dark={dark} label="TAMAÑO" value={dogSize(dog.weight)?.label}/><IRow dark={dark} label="COLOR" value={dog.color}/><IRow dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate||null}/><IRow dark={dark} label="ESTERILIZADO" value={yn(dog.sterilized)}/>{dog.lastCelo&&<IRow dark={dark} label="ULTIMO CELO" value={dog.lastCelo}/>}</IGrid><IGrid cols={2}><IRow dark={dark} label="TUTOR" value={dog.owner}/><IRow dark={dark} label="TEL" value={dog.phone}/></IGrid>{dog.authorizedPeople&&<IRow dark={dark} label="PERSONAS AUTORIZADAS" value={dog.authorizedPeople}/>}<IGrid cols={2}><IRow dark={dark} label="VET. EMERGENCIAS" value={dog.emergencyVet}/><IRow dark={dark} label="TEL. VET." value={dog.emergencyVetPhone}/></IGrid></div>}
+          {dTab==="perfil"&&<div style={{ display:"flex", flexDirection:"column", gap:10 }}><IGrid cols={3}><IRow dark={dark} label="NOMBRE" value={dog.name}/><IRow dark={dark} label="RAZA" value={dog.breed}/><IRow dark={dark} label="SEXO" value={dog.sex}/><IRow dark={dark} label="EDAD" value={dogAge(dog)}/><IRow dark={dark} label="PESO" value={dog.weight}/><IRow dark={dark} label="TAMAÑO" value={dogSize(dog.weight)?.label}/><IRow dark={dark} label="COLOR" value={dog.color}/><IRow dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate||null}/><IRow dark={dark} label="ESTERILIZADO" value={yn(dog.sterilized)}/>{dog.lastCelo&&<IRow dark={dark} label="ULTIMO CELO" value={dog.lastCelo}/>}</IGrid><IGrid cols={2}><IRow dark={dark} label="TUTOR" value={dog.owner}/><IRow dark={dark} label="TEL" value={dog.phone}/></IGrid>{dog.authorizedPeople&&<IRow dark={dark} label="PERSONAS AUTORIZADAS" value={dog.authorizedPeople}/>}<IGrid cols={2}><IRow dark={dark} label="VET. EMERGENCIAS" value={dog.emergencyVet}/><IRow dark={dark} label="TEL. VET." value={dog.emergencyVetPhone}/></IGrid></div>}
           {dTab==="salud"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="ALERGIAS" value={dog.allergies}/><IRow dark={dark} label="CONDICIONES MEDICAS" value={dog.medicalConditions}/><IRow dark={dark} label="MEDICAMENTOS" value={dog.medications}/><IRow dark={dark} label="DOSIS Y FRECUENCIA" value={dog.dosage}/></div>}
           {dTab==="alimentacion"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={2}><IRow dark={dark} label="PRODUCTO" value={dog.foodProduct}/><IRow dark={dark} label="MEDIDA" value={dog.foodMeasure}/></IGrid>{meals.filter(m=>dog[m.key+"Time"]||dog[m.key+"Amount"]).map(m=><div key={m.key} style={{ display:"flex",alignItems:"center",gap:9,padding:"8px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span style={{ fontWeight:700,fontSize:12,color:t.accD,width:55 }}>{m.label}</span>{dog[m.key+"Time"]&&<span style={{ fontSize:12,color:t.text }}>{dog[m.key+"Time"]}</span>}{dog[m.key+"Amount"]&&<span style={{ fontSize:12,color:t.text,marginLeft:7 }}>{dog[m.key+"Amount"]}</span>}</div>)}<IRow dark={dark} label="NOTAS" value={dog.extraFoodNotes}/><IRow dark={dark} label="PREMIOS" value={treats(dog.treatsAllowed)}/>{dog.treatsAllowed==="tutor"&&<IRow dark={dark} label="PREMIOS DEL TUTOR" value={dog.tutorTreats}/>}</div>}
           {dTab==="comportamiento"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="CON LAS PERSONAS" value={dog.relationWithPeople}/><IRow dark={dark} label="MIEDOS" value={dog.fearsPhobias}/><IRow dark={dark} label="MANEJO ESPECIAL" value={dog.handlingInstructions}/><IRow dark={dark} label="AUTH. VET. EMERGENCIA" value={yn(dog.vetEmergencyAuth)}/></div>}
-          {dTab==="vacunas"&&<div style={{ display:"flex",flexDirection:"column",gap:6 }}>{VACCINES.map(v=><VacRow key={v.id} dark={dark} vac={dog.vaccinations?.[v.id]} label={v.label} icon={v.icon}/>)}</div>}
+          {dTab==="vacunas"&&<div style={{ display:"flex",flexDirection:"column",gap:6 }}>{dog.noVaccineCard&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:"#FFF7ED",border:"1.5px solid #F9731660",fontWeight:800,fontSize:13,color:"#C2410C" }}>⚠ No entregó cartilla de vacunación</div>}{VACCINES.map(v=><VacRow key={v.id} dark={dark} vac={dog.vaccinations?.[v.id]} label={v.label} icon={v.icon}/>)}</div>}
           {dTab==="cuidador"&&<div style={{ display:"flex",flexDirection:"column",gap:11 }}><div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 17px",borderRadius:13,background:bm.bg,border:"1.5px solid "+bm.border }}><div style={{ display:"flex",alignItems:"center",gap:9 }}><span style={{ fontSize:26 }}>{bm.icon}</span><div><div style={{ fontWeight:800,fontSize:14,color:bm.color }}>{bm.label}</div>{care.date&&<div style={{ fontSize:11,color:"#9CA3AF",marginTop:1 }}>{care.date}{care.evaluator?" - "+care.evaluator:""}</div>}</div></div>{care.result==="training"&&care.trainer&&<div style={{ textAlign:"right" }}><div style={{ fontSize:9,color:"#9CA3AF",fontWeight:700 }}>ENTRENADOR</div><div style={{ fontWeight:700,color:"#8B5CF6" }}>{"🏅 "+care.trainer}</div></div>}</div>{BCRITERIA.some(cr=>care.scores?.[cr.id]!==""&&care.scores?.[cr.id]!==undefined)&&<IGrid cols={2}>{BCRITERIA.map(cr=>{const s=care.scores?.[cr.id];const sm=(s!==""&&s!==undefined)?SCORE_META[s]:null;return<div key={cr.id} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 11px",borderRadius:9,background:t.surf2,border:"1px solid "+t.bord }}><span style={{ fontSize:12,color:t.text2,fontWeight:600 }}>{cr.label}</span>{sm?<span style={{ fontSize:10,fontWeight:700,color:sm.color,background:sm.color+"18",borderRadius:5,padding:"1px 7px" }}>{sm.label}</span>:<span style={{ fontSize:10,color:t.text3 }}>—</span>}</div>;})}
           </IGrid>}{sv&&<div style={{ display:"inline-flex",alignItems:"center",gap:7,padding:"6px 13px",borderRadius:9,background:sv.bg,border:"1px solid "+sv.color+"30" }}><span style={{ fontWeight:800,fontSize:12,color:sv.color }}>{"👁 SUPERVISION: "+sv.label}</span></div>}<div style={{ display:"flex",flexDirection:"column",gap:8 }}>{[["AL INGRESAR",care.behaviorAtEntry],["CON OTROS PERROS",care.dogInteraction],["CON EL PERSONAL",care.staffInteraction],["ALIMENTACION E HIDRATACION",care.foodHabits],["DURANTE EL JUEGO",care.playBehavior],["DURANTE EL DESCANSO",care.restBehavior],["OBSERVACIONES",care.notes]].map(([l,v])=><IRow key={l} dark={dark} label={l} value={v}/>)}</div></div>}
           {dTab==="grooming"&&<div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={3}><IRow dark={dark} label="ULTIMO SERVICIO" value={g.lastDate}/><IRow dark={dark} label="ESTILISTA" value={g.stylist}/><IRow dark={dark} label="TIPO" value={g.lastService}/></IGrid>{[["BANHO",g.bathReactions],["SECADO",g.dryingReactions],["CORTE",g.cutReactions],["UNAS",g.nailReactions],["OIDOS",g.earsReactions],["NOTAS",g.notes]].map(([l,v])=><IRow key={l} dark={dark} label={l} value={v}/>)}</div>}
@@ -2074,7 +2100,7 @@ export default function PawPark() {
   const vacAlerts = dogs.filter(d => ["expired","soon"].includes(ovs(d))).sort((a,b) => ovs(a)==="expired"?-1:1);
   const incompleteCount = isAdmin ? dogs.filter(d => pmiss(d).length>0).length : 0;
 
-  const FILTERS = [{id:"all",label:"Todos"},{id:"expired",label:"Vencidas"},{id:"soon",label:"Por vencer"},{id:"ok",label:"Al dia"},{id:"training",label:"Adiest."},{id:"alto",label:"Sup. Alta"},{id:"incomplete",label:"Incompletos"}];
+  const FILTERS = [{id:"all",label:"Todos"},{id:"expired",label:"Vencidas"},{id:"soon",label:"Por vencer"},{id:"ok",label:"Al dia"},{id:"nocard",label:"Sin cartilla"},{id:"training",label:"Adiest."},{id:"alto",label:"Sup. Alta"},{id:"incomplete",label:"Incompletos"}];
   const filtered = dogs.filter(d => {
     const q = search.toLowerCase();
     const mq = !q || [d.name,d.owner,d.breed].some(f=>f?.toLowerCase().includes(q));
@@ -2083,6 +2109,7 @@ export default function PawPark() {
     if (filter==="expired") return ovs(d)==="expired";
     if (filter==="soon") return ovs(d)==="soon";
     if (filter==="ok") return ovs(d)==="ok";
+    if (filter==="nocard") return !!d.noVaccineCard;
     if (filter==="training") return d.care?.result==="training";
     if (filter==="alto") return d.care?.supervisionLevel==="alto";
     if (filter==="incomplete") return pmiss(d).length>0;
@@ -2288,7 +2315,7 @@ export default function PawPark() {
                     <Card key={dog.id} dark={dark} onClick={() => {setSelDog(dog);setView("detail");}} style={{ border:"2px solid " + VST[vs].color + "25" }}>
                       <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:9 }}>
                         <DogAvatar dog={dog} size={44} />
-                        <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}</div><div style={{ fontSize:11, color:t.text2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div></div>
+                        <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}</div><div style={{ fontSize:11, color:t.text2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dogAge(dog)?" - "+dogAge(dog):""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div></div>
                         <div style={{ display:"flex", flexDirection:"column", gap:3, alignItems:"flex-end" }}>
                           <VacBadge status={vs} sm />
                           {miss.length > 0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"1px 6px", fontSize:9, fontWeight:800, border:"1px solid " + t.acc + "30" }}>Inc.</span>}
@@ -2351,7 +2378,7 @@ export default function PawPark() {
                     <DogAvatar dog={dog} size={62} />
                     <div>
                       <h2 style={{ margin:0, fontSize:20, color:t.text }}>{dog.name}</h2>
-                      <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}{dog.weight?" - "+dog.weight:""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div>
+                      <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dogAge(dog)?" - "+dogAge(dog):""}{dog.weight?" - "+dog.weight:""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div>
                       <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.owner}{dog.phone?" - "+dog.phone:""}</div>
                       {(dog.emergencyVet||dog.emergencyVetPhone) && <div style={{ fontSize:11, color:"#8B5CF6", marginTop:2 }}>{dog.emergencyVet}{dog.emergencyVetPhone?" - "+dog.emergencyVetPhone:""}</div>}
                       <div style={{ display:"flex", gap:6, marginTop:7, flexWrap:"wrap" }}>
@@ -2371,11 +2398,11 @@ export default function PawPark() {
                 </div>
                 <TabBar tabs={dtabs} active={dTab} onChange={setDTab} dark={dark} />
                 <div style={{ marginTop:16 }}>
-                  {dTab==="perfil" && <div style={{ display:"flex", flexDirection:"column", gap:10 }}><IGrid cols={3}><IRow dark={dark} label="NOMBRE" value={dog.name}/><IRow dark={dark} label="RAZA" value={dog.breed}/><IRow dark={dark} label="SEXO" value={dog.sex}/><IRow dark={dark} label="EDAD" value={dog.birthdate ? calcAge(dog.birthdate) : (dog.age||null)}/><IRow dark={dark} label="PESO" value={dog.weight}/><IRow dark={dark} label="TAMAÑO" value={dogSize(dog.weight)?.label}/><IRow dark={dark} label="COLOR" value={dog.color}/><IRow dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate||null}/><IRow dark={dark} label="ESTERILIZADO" value={yn(dog.sterilized)}/>{dog.lastCelo&&<IRow dark={dark} label="ULTIMO CELO" value={dog.lastCelo}/>}</IGrid><IGrid cols={2}><IRow dark={dark} label="TUTOR" value={dog.owner}/><IRow dark={dark} label="TEL" value={dog.phone}/></IGrid>{dog.authorizedPeople&&<IRow dark={dark} label="PERSONAS AUTORIZADAS" value={dog.authorizedPeople}/>}<IGrid cols={2}><IRow dark={dark} label="VET. EMERGENCIAS" value={dog.emergencyVet}/><IRow dark={dark} label="TEL. VET." value={dog.emergencyVetPhone}/></IGrid></div>}
+                  {dTab==="perfil" && <div style={{ display:"flex", flexDirection:"column", gap:10 }}><IGrid cols={3}><IRow dark={dark} label="NOMBRE" value={dog.name}/><IRow dark={dark} label="RAZA" value={dog.breed}/><IRow dark={dark} label="SEXO" value={dog.sex}/><IRow dark={dark} label="EDAD" value={dogAge(dog)}/><IRow dark={dark} label="PESO" value={dog.weight}/><IRow dark={dark} label="TAMAÑO" value={dogSize(dog.weight)?.label}/><IRow dark={dark} label="COLOR" value={dog.color}/><IRow dark={dark} label="FECHA DE NACIMIENTO" value={dog.birthdate||null}/><IRow dark={dark} label="ESTERILIZADO" value={yn(dog.sterilized)}/>{dog.lastCelo&&<IRow dark={dark} label="ULTIMO CELO" value={dog.lastCelo}/>}</IGrid><IGrid cols={2}><IRow dark={dark} label="TUTOR" value={dog.owner}/><IRow dark={dark} label="TEL" value={dog.phone}/></IGrid>{dog.authorizedPeople&&<IRow dark={dark} label="PERSONAS AUTORIZADAS" value={dog.authorizedPeople}/>}<IGrid cols={2}><IRow dark={dark} label="VET. EMERGENCIAS" value={dog.emergencyVet}/><IRow dark={dark} label="TEL. VET." value={dog.emergencyVetPhone}/></IGrid></div>}
                   {dTab==="salud" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="ALERGIAS" value={dog.allergies}/><IRow dark={dark} label="CONDICIONES MEDICAS" value={dog.medicalConditions}/><IRow dark={dark} label="MEDICAMENTOS" value={dog.medications}/><IRow dark={dark} label="DOSIS Y FRECUENCIA" value={dog.dosage}/></div>}
                   {dTab==="alimentacion" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IGrid cols={2}><IRow dark={dark} label="PRODUCTO" value={dog.foodProduct}/><IRow dark={dark} label="MEDIDA" value={dog.foodMeasure}/></IGrid>{meals.filter(m=>dog[m.key+"Time"]||dog[m.key+"Amount"]).map(m=><div key={m.key} style={{ display:"flex",alignItems:"center",gap:9,padding:"8px 13px",borderRadius:10,background:t.accBg,border:"1px solid "+t.acc+"30" }}><span style={{ fontWeight:700,fontSize:12,color:t.accD,width:55 }}>{m.label}</span>{dog[m.key+"Time"]&&<span style={{ fontSize:12,color:t.text }}>{dog[m.key+"Time"]}</span>}{dog[m.key+"Amount"]&&<span style={{ fontSize:12,color:t.text,marginLeft:7 }}>{dog[m.key+"Amount"]}</span>}</div>)}<IRow dark={dark} label="NOTAS" value={dog.extraFoodNotes}/><IRow dark={dark} label="PREMIOS" value={treats(dog.treatsAllowed)}/>{dog.treatsAllowed==="tutor"&&<IRow dark={dark} label="PREMIOS DEL TUTOR" value={dog.tutorTreats}/>}</div>}
                   {dTab==="comportamiento" && <div style={{ display:"flex",flexDirection:"column",gap:10 }}><IRow dark={dark} label="CON LAS PERSONAS" value={dog.relationWithPeople}/><IRow dark={dark} label="MIEDOS" value={dog.fearsPhobias}/><IRow dark={dark} label="MANEJO ESPECIAL" value={dog.handlingInstructions}/><IRow dark={dark} label="AUTH. VET. EMERGENCIA" value={yn(dog.vetEmergencyAuth)}/></div>}
-                  {dTab==="vacunas" && <div style={{ display:"flex",flexDirection:"column",gap:6 }}>{VACCINES.map(v=><VacRow key={v.id} dark={dark} vac={dog.vaccinations?.[v.id]} label={v.label} icon={v.icon}/>)}</div>}
+                  {dTab==="vacunas" && <div style={{ display:"flex",flexDirection:"column",gap:6 }}>{dog.noVaccineCard&&<div style={{ display:"flex",alignItems:"center",gap:9,padding:"10px 13px",borderRadius:10,background:"#FFF7ED",border:"1.5px solid #F9731660",fontWeight:800,fontSize:13,color:"#C2410C" }}>⚠ No entregó cartilla de vacunación</div>}{VACCINES.map(v=><VacRow key={v.id} dark={dark} vac={dog.vaccinations?.[v.id]} label={v.label} icon={v.icon}/>)}</div>}
                   {dTab==="cuidador" && <div style={{ display:"flex",flexDirection:"column",gap:11 }}>
                     <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 17px",borderRadius:13,background:bm.bg,border:"1.5px solid "+bm.border }}>
                       <div style={{ display:"flex",alignItems:"center",gap:9 }}><span style={{ fontSize:26 }}>{bm.icon}</span><div><div style={{ fontWeight:800,fontSize:14,color:bm.color }}>{bm.label}</div>{care.date&&<div style={{ fontSize:11,color:"#9CA3AF",marginTop:1 }}>{care.date}{care.evaluator?" - "+care.evaluator:""}</div>}</div></div>
