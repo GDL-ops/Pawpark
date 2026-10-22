@@ -1094,17 +1094,25 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
 
 function HotelPanel({ dogs, dark, onOpenDog }) {
   const t = getT(dark);
-  const [range, setRange] = useState("upcoming"); // upcoming | past | all
+  const [month, setMonth] = useState(() => todayYMD().slice(0, 7)); // "2026-10" o "all"
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null); // { dog, stay } | { new:true }
   const [sel, setSel] = useState({}); // { "dogId|stayId": true }
   const today = todayYMD();
   const all = dogs.flatMap(dog => (dog.hotelStays || []).map(stay => ({ dog, stay })));
   const inHouse = all.filter(({ stay }) => stay.checkIn && stay.checkIn <= today && (!stay.checkOut || stay.checkOut >= today));
+  // Pestañas por mes: cada estancia va en el mes de su fecha de entrada. Siempre se muestra el mes actual y el siguiente.
+  const curMonth = today.slice(0, 7);
+  const nextMonth = (() => { const [y, m] = curMonth.split("-").map(Number); return m === 12 ? (y + 1) + "-01" : y + "-" + String(m + 1).padStart(2, "0"); })();
+  const months = [...new Set([curMonth, nextMonth, ...all.map(({ stay }) => (stay.checkIn || "").slice(0, 7)).filter(m => /^\d{4}-\d{2}$/.test(m))])].sort();
+  const monthLabel = ym => { const [y, m] = ym.split("-").map(Number); return MONTHS_ES[m - 1] + (y !== Number(curMonth.slice(0, 4)) ? " " + y : ""); };
+  const countIn = ym => all.filter(({ stay }) => (stay.checkIn || "").startsWith(ym)).length;
   const list = all
-    .filter(({ stay }) => range === "all" ? true : range === "upcoming" ? (!stay.checkOut || stay.checkOut >= today) : (stay.checkOut && stay.checkOut < today))
+    .filter(({ stay }) => month === "all" || (stay.checkIn || "").startsWith(month))
     .filter(({ dog }) => !q.trim() || [dog.name, dog.owner, dog.breed].some(f => f?.toLowerCase().includes(q.trim().toLowerCase())))
-    .sort((a, b) => range === "past" ? (b.stay.checkIn || "").localeCompare(a.stay.checkIn || "") : (a.stay.checkIn || "9").localeCompare(b.stay.checkIn || "9"));
+    .sort((a, b) => (a.stay.checkIn || "9").localeCompare(b.stay.checkIn || "9"));
+  const monthNights = list.reduce((n, { stay }) => n + (stayNights(stay) || 0), 0);
+  const monthTotal = list.reduce((n, { stay }) => n + money(stay.total), 0);
   const pending = list.reduce((n, { stay }) => n + (stay.paid ? 0 : stayRemaining(stay)), 0);
   const keyOf = (dog, stay) => dog.id + "|" + stay.id;
   const selected = list.filter(({ dog, stay }) => sel[keyOf(dog, stay)]);
@@ -1131,7 +1139,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
         <div>
           <h2 style={{ margin:0, fontSize:19, color:t.text }}>🏨 Hotel</h2>
-          <div style={{ fontSize:12, color:t.text3, marginTop:2 }}>{inHouse.length} hospedado{inHouse.length !== 1 ? "s" : ""} hoy · {list.length} estancia{list.length !== 1 ? "s" : ""} en la lista{pending > 0 ? " · por cobrar " + fmtMoney(pending) : ""}</div>
+          <div style={{ fontSize:12, color:t.text3, marginTop:2 }}>{inHouse.length} hospedado{inHouse.length !== 1 ? "s" : ""} hoy</div>
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {selected.length > 0 && <button onClick={() => printStaySheets(selected)} style={{ padding:"9px 16px", borderRadius:11, border:"1.5px solid #143B31", background:"#E8F0DC", color:"#143B31", fontWeight:800, cursor:"pointer", fontSize:13 }}>🖨 Imprimir {selected.length} hoja{selected.length !== 1 ? "s" : ""} ({Math.ceil(selected.length / 2)} pág.)</button>}
@@ -1139,13 +1147,28 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
         </div>
       </div>
       <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
-        {[["upcoming","Actuales y próximas"],["past","Pasadas"],["all","Todas"]].map(([k,l]) => <button key={k} onClick={() => setRange(k)} style={{ padding:"5px 13px", borderRadius:99, border:"1.5px solid " + (range===k ? t.acc : t.bord), background: range===k ? t.accBg : t.surf, color: range===k ? t.accD : t.text2, fontWeight:700, fontSize:12, cursor:"pointer" }}>{l}</button>)}
+      </div>
+      <div style={{ display:"flex", gap:4, overflowX:"auto", WebkitOverflowScrolling:"touch", borderBottom:"2px solid " + t.bord, paddingBottom:0 }}>
+        {[...months, "all"].map(ym => { const on = month === ym; const n = ym === "all" ? all.length : countIn(ym); return (
+          <button key={ym} onClick={() => { setMonth(ym); setSel({}); }} style={{ padding:"9px 15px", border:"none", borderBottom:"3px solid " + (on ? "#C1712C" : "transparent"), marginBottom:-2, background:"transparent", color: on ? t.text : t.text3, fontWeight: on ? 900 : 700, fontSize:13, cursor:"pointer", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:6 }}>
+            {ym === "all" ? "Todas" : monthLabel(ym)}{ym === curMonth && <span style={{ width:6, height:6, borderRadius:"50%", background:"#C1712C" }} />}
+            {n > 0 && <span style={{ background: on ? "#C1712C" : t.surf2, color: on ? "white" : t.text3, borderRadius:99, padding:"0 7px", fontSize:10, fontWeight:800 }}>{n}</span>}
+          </button>
+        ); })}
+      </div>
+      <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
+        <div style={{ display:"flex", gap:14, flexWrap:"wrap", fontSize:12, color:t.text2 }}>
+          <span><b style={{ color:t.text }}>{list.length}</b> estancia{list.length !== 1 ? "s" : ""}</span>
+          <span><b style={{ color:t.text }}>{monthNights}</b> noche{monthNights !== 1 ? "s" : ""}</span>
+          <span>Total <b style={{ color:t.text }}>{fmtMoney(monthTotal)}</b></span>
+          {pending > 0 && <span>Por cobrar <b style={{ color:"#DC2626" }}>{fmtMoney(pending)}</b></span>}
+        </div>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar perrito o tutor..." style={{ marginLeft:"auto", padding:"7px 13px", borderRadius:10, border:"1.5px solid " + t.bord, fontSize:13, background:t.surf, color:t.text, outline:"none", width:220, maxWidth:"100%" }} />
       </div>
       {list.length === 0 ? (
         <Card dark={dark} style={{ textAlign:"center", padding:"40px 0" }}>
           <div style={{ fontSize:40 }}>🏨</div>
-          <div style={{ fontWeight:700, fontSize:14, marginTop:8, color:t.text }}>{range === "past" ? "Sin estancias pasadas" : "Sin estancias agendadas"}</div>
+          <div style={{ fontWeight:700, fontSize:14, marginTop:8, color:t.text }}>{month === "all" ? "Sin estancias agendadas" : "Sin estancias en " + monthLabel(month).toLowerCase()}</div>
         </Card>
       ) : (
         <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch", borderRadius:14, border:"1px solid " + t.bord, background:t.surf }}>
