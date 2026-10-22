@@ -868,13 +868,13 @@ function staySheetBody(dog, stay) {
     '</table></div>';
 }
 
-// Dos hojas por página (carta horizontal, cada hoja ocupa media carta).
+// Dos hojas por página (A4 horizontal, cada hoja ocupa media hoja).
 function staySheetsHtml(items) {
   const pages = [];
   for (let i = 0; i < items.length; i += 2) pages.push(items.slice(i, i + 2));
   const title = items.length === 1 ? "Hoja de estancia - " + escHtml(items[0].dog.name) : "Hojas de estancia (" + items.length + ")";
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + title + '</title><style>' +
-    '@page{size:letter landscape;margin:8mm}' +
+    '@page{size:A4 landscape;margin:8mm}' +
     '*{box-sizing:border-box}' +
     'body{margin:0;font-family:"Courier New",Courier,monospace;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     '.page{display:flex;gap:12mm;page-break-after:always;break-after:page}' +
@@ -883,13 +883,13 @@ function staySheetsHtml(items) {
     '.brand{font-family:Arial,sans-serif;font-size:8px;letter-spacing:.2em;color:#555;text-align:right;margin-bottom:3px}' +
     'table{width:100%;border-collapse:collapse;border:2px solid #111}' +
     'td{border:1.3px solid #111;padding:4px 8px;font-size:12px;vertical-align:middle}' +
-    'td.top{height:34px}' +
+    'td.top{height:30px}' +
     'td.chk{width:30%;text-align:center}' +
-    'tr.b td{height:30px}' +
+    'tr.b td{height:27px}' +
     '.box{display:inline-block;width:15px;height:15px;border:1.6px solid #333;border-radius:2px;line-height:12px;font-size:12px;font-weight:bold;text-align:center}' +
     'td.hdr{text-align:center;font-size:12.5px;height:24px}' +
-    'td.hdr.food{font-size:14px;font-weight:bold;background:#eee}' +
-    'td.big{height:300px;vertical-align:top;white-space:pre-wrap;font-size:15px;font-weight:bold;line-height:1.45}' +
+    'td.hdr.food{font-size:15px;font-weight:bold;background:#eee}' +
+    'td.big{height:250px;vertical-align:top;white-space:pre-wrap;font-size:18px;font-weight:bold;line-height:1.4}' +
     'td.half{width:50%;height:28px}' +
     '</style></head><body>' +
     pages.map(pg => '<div class="page">' + pg.map(({ dog, stay }) => staySheetBody(dog, stay)).join("") + '</div>').join("") +
