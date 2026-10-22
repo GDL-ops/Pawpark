@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { db } from "./firebase.js";
 import { collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, getDocs, writeBatch } from "firebase/firestore";
 
@@ -713,7 +713,7 @@ function StayCard({ stay, dog, onDelete, onChange, currentUser, readOnly, dark }
           <span style={{ fontSize:20 }}>🏨</span>
           <div>
             <div style={{ color:"white", fontWeight:800, fontSize:15 }}>{dog.name}</div>
-            <div style={{ color:"#AACC71", fontSize:12 }}>{stay.checkIn && stay.checkOut ? fmtDMY(stay.checkIn) + " al " + fmtDMY(stay.checkOut) : fmtDMY(stay.checkIn || stay.checkOut) || "Fechas pendientes"}{stayNights(stay) != null ? " · " + stayNights(stay) + " noche" + (stayNights(stay) !== 1 ? "s" : "") : ""}{stay.cage ? " · Jaula " + stay.cage : ""}</div>
+            <div style={{ color:"#AACC71", fontSize:12 }}>{stay.checkIn && stay.checkOut ? fmtDMY(stay.checkIn) + " al " + fmtDMY(stay.checkOut) : fmtDMY(stay.checkIn || stay.checkOut) || "Fechas pendientes"}{stayNights(stay) != null ? " · " + stayNights(stay) + " noche" + (stayNights(stay) !== 1 ? "s" : "") : ""}{stay.cage ? " · " + roomLabel(stay.cage) : ""}</div>
           </div>
         </div>
         <div style={{ display:"flex", gap:8, alignItems:"center" }}>
@@ -849,7 +849,7 @@ function staySheetBody(dog, stay) {
   const estancia = [
     stay.checkIn || stay.checkOut ? fmtDMY(stay.checkIn) + " al " + fmtDMY(stay.checkOut) : "",
     n != null ? n + (n === 1 ? " noche" : " noches") : "",
-    stay.cage ? "Jaula " + stay.cage : "",
+    roomLabel(stay.cage),
   ].filter(Boolean).join(" · ");
   const rows = BELONGINGS.map(b => {
     const it = stay.belongings?.[b.id] || {};
@@ -921,6 +921,234 @@ function PrintStayButton({ dog, stay, small }) {
   );
 }
 
+// ---- HOTEL: jaulas, disponibilidad y acomodo --------------------------------
+// Jaulas 1–28 (15–28 están arriba: de preferencia para perritos pequeños y medianos) + lugares especiales.
+const CAMERA_ROOMS = [1, 4, 8, 13, 14];
+const UPPER_FROM = 15;
+const HOTEL_ROOMS = [
+  ...Array.from({ length:28 }, (_, i) => { const n = i + 1; return { id:String(n), label:String(n), camera:CAMERA_ROOMS.includes(n), upper:n >= UPPER_FROM, special:false }; }),
+  { id:"vet",   label:"Veterinario",    camera:false, upper:false, special:true },
+  { id:"trans", label:"Transportadora", camera:false, upper:false, special:true },
+];
+const BIG_SIZES = new Set(["Grande", "Extra grande"]);
+const roomOf = cage => {
+  const c = String(cage ?? "").trim().toLowerCase();
+  if (!c) return null;
+  return HOTEL_ROOMS.find(r => r.id === c || r.label.toLowerCase() === c) || null;
+};
+const roomLabel = cage => { const r = roomOf(cage); return r ? (r.special ? r.label : "Jaula " + r.label) : (cage ? "Jaula " + cage : ""); };
+const addDayYMD = ds => { const t = ymdToUTC(ds); if (t == null) return ds; const d = new Date(t + 864e5); return d.toISOString().slice(0, 10); };
+// Noches ocupadas: de la entrada al día anterior a la salida (el día de salida la jaula ya se puede volver a usar).
+const stayEnd = s => s.checkOut && s.checkOut > s.checkIn ? s.checkOut : s.checkOut ? addDayYMD(s.checkIn) : "9999-12-31";
+const staysOverlap = (a, b) => !!(a.checkIn && b.checkIn) && a.checkIn < stayEnd(b) && b.checkIn < stayEnd(a);
+// Estancias que ocupan la jaula en esas fechas (sin contar la estancia que se está editando).
+function roomOccupants(all, roomId, range, excludeId) {
+  return all.filter(({ stay }) => stay.id !== excludeId && roomOf(stay.cage)?.id === roomId && staysOverlap(stay, range));
+}
+function freeRooms(all, range, excludeId) {
+  return HOTEL_ROOMS.filter(r => !r.special && roomOccupants(all, r.id, range, excludeId).length === 0);
+}
+// Abajo primero para todos; con cámara solo si la pidieron (para guardarlas). Arriba de preferencia pequeños y medianos;
+// con alta demanda (abajo lleno) también se acomodan grandes arriba.
+function suggestRoom(all, range, dog, wantsCamera, excludeId) {
+  const free = freeRooms(all, range, excludeId);
+  const lower = free.filter(r => !r.upper), upper = free.filter(r => r.upper);
+  const big = BIG_SIZES.has(dogSize(dog?.weight)?.label);
+  const order = wantsCamera
+    ? [...lower.filter(r => r.camera)]
+    : [...lower.filter(r => !r.camera), ...lower.filter(r => r.camera), ...upper];
+  return order[0] || null;
+}
+const fmtShortDate = ds => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ds || ""); return m ? (+m[3]) + " " + MONTHS_ES[+m[2] - 1].slice(0, 3).toLowerCase() : ""; };
+// Quién está en cada jaula un día (incluye a los que salen o llegan ese día).
+function roomsOnDay(all, day) {
+  return HOTEL_ROOMS.map(r => ({ room:r, occ: all.filter(({ stay }) => roomOf(stay.cage)?.id === r.id && stay.checkIn && stay.checkIn <= day && (!stay.checkOut || stay.checkOut >= day)).sort((a, b) => (a.stay.checkIn || "").localeCompare(b.stay.checkIn || "")) }));
+}
+const unassignedOnDay = (all, day) => all.filter(({ stay }) => !roomOf(stay.cage) && stay.checkIn && stay.checkIn <= day && (!stay.checkOut || stay.checkOut >= day));
+
+function acomodoHtml(all, day) {
+  const rows = roomsOnDay(all, day);
+  const dateTitle = (() => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day); return m ? (+m[3]) + " de " + MONTHS_ES[+m[2] - 1].toLowerCase() + " " + m[1] : day; })();
+  const who = occ => occ.map(({ dog, stay }) => {
+    const sz = dogSize(dog.weight)?.label;
+    const tag = stay.checkOut === day ? " (sale hoy)" : stay.checkIn === day ? " (llega hoy)" : "";
+    return '<b>' + escHtml(dog.name) + '</b>' + (dog.breed || sz ? ' <span class="sm">' + escHtml([dog.breed, sz].filter(Boolean).join(" · ")) + '</span>' : '') + '<span class="sm">' + tag + '</span>';
+  }).join("<br>");
+  const salida = occ => occ.map(({ stay }) => fmtShortDate(stay.checkOut)).filter(Boolean).join("<br>");
+  const body = rows.map(({ room, occ }) =>
+    (room.id === String(UPPER_FROM) ? '<tr><td colspan="4" class="sec">ARRIBA (jaulas ' + UPPER_FROM + '–28)</td></tr>' : '') +
+    (room.id === "vet" ? '<tr><td colspan="4" class="sec">OTROS</td></tr>' : '') +
+    '<tr class="' + (occ.length ? 'occ' : '') + '"><td class="dog">' + who(occ) + '</td><td class="c">' + (room.special ? '<b>' + room.label.toUpperCase() + '</b>' : room.label) + '</td><td class="c' + (room.camera ? ' cam' : '') + '">' + (room.special ? '' : room.camera ? 'CON CÁMARA' : 'SIN CÁMARA') + '</td><td class="c">' + salida(occ) + '</td></tr>'
+  ).join("");
+  const un = unassignedOnDay(all, day);
+  const total = rows.reduce((n, r) => n + r.occ.length, 0) + un.length;
+  return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acomodo hotel ' + escHtml(dateTitle) + '</title><style>' +
+    '@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}' +
+    'body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    'h1{font-size:16px;margin:0 0 2px}.sub{font-size:11px;color:#444;margin-bottom:6px}' +
+    'table{width:100%;border-collapse:collapse}th{background:#eee;font-size:12px;padding:4px 6px;border:1px solid #111}' +
+    'td{border:1px solid #111;padding:2px 6px;font-size:13px;height:25px;vertical-align:middle}' +
+    'td.c{text-align:center}td.dog{width:42%}td.cam{font-weight:bold}tr.occ td.dog{background:#F3F9EC}' +
+    'td.sec{background:#ddd;font-weight:bold;font-size:10px;letter-spacing:.08em;text-align:center;height:16px;padding:1px}' +
+    '.sm{font-size:10px;color:#444}.warn{margin-top:6px;font-size:11px;color:#B91C1C}' +
+    '</style></head><body>' +
+    '<h1>PAW PARK · Acomodo de hotel</h1><div class="sub">' + escHtml(dateTitle) + ' · ' + total + ' perrito' + (total !== 1 ? 's' : '') + ' hospedado' + (total !== 1 ? 's' : '') + '</div>' +
+    '<table><thead><tr><th>PERRO</th><th>HABITACIÓN</th><th></th><th>SALIDA</th></tr></thead><tbody>' + body + '</tbody></table>' +
+    (un.length ? '<div class="warn">Sin jaula asignada: ' + un.map(({ dog }) => escHtml(dog.name)).join(", ") + '</div>' : '') +
+    '</body></html>';
+}
+
+function printHtml(html) {
+  const ifr = document.createElement("iframe");
+  ifr.setAttribute("aria-hidden", "true");
+  ifr.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(ifr);
+  const d = ifr.contentDocument || ifr.contentWindow.document;
+  d.open(); d.write(html); d.close();
+  setTimeout(() => {
+    try { ifr.contentWindow.focus(); ifr.contentWindow.print(); }
+    catch (e) { console.error(e); alert("No se pudo abrir la impresión: " + e.message); }
+    setTimeout(() => ifr.remove(), 60000);
+  }, 300);
+}
+
+// Selector de jaula dentro del formulario de estancia.
+function RoomPicker({ all, stay, dog, onPick, onCamera, dark }) {
+  const t = getT(dark);
+  const range = { checkIn: stay.checkIn, checkOut: stay.checkOut };
+  const ready = !!stay.checkIn;
+  const free = ready ? freeRooms(all, range, stay.id) : [];
+  const freeLower = free.filter(r => !r.upper), freeCam = free.filter(r => r.camera);
+  const big = BIG_SIZES.has(dogSize(dog?.weight)?.label);
+  const cur = roomOf(stay.cage);
+  const curConflict = cur && ready ? roomOccupants(all, cur.id, range, stay.id) : [];
+  const sug = ready ? suggestRoom(all, range, dog, !!stay.wantsCamera, stay.id) : null;
+  const legend = (bg, bd, txt) => <span style={{ display:"inline-flex", alignItems:"center", gap:4 }}><span style={{ width:11, height:11, borderRadius:3, background:bg, border:"1px solid " + bd }} />{txt}</span>;
+  const cell = r => {
+    const occ = ready ? roomOccupants(all, r.id, range, stay.id) : [];
+    const on = cur?.id === r.id;
+    const busy = occ.length > 0;
+    const notRec = !busy && r.upper && big && freeLower.length > 0;
+    const bg = on ? (busy ? "#FEE2E2" : "#143B31") : busy ? (dark ? "#2a2a2a" : "#E5E7EB") : notRec ? "#FFF7ED" : (dark ? "#14301F" : "#ECFDF5");
+    const col = on && !busy ? "white" : busy ? t.text3 : t.text;
+    return (
+      <button key={r.id} type="button" onClick={() => onPick(on ? "" : r.id)}
+        title={busy ? "Ocupada: " + occ.map(o => o.dog.name + " (" + fmtDMY(o.stay.checkIn) + "–" + fmtDMY(o.stay.checkOut) + ")").join(", ") : notRec ? "Arriba: mejor abajo mientras haya lugar" : "Disponible"}
+        style={{ minWidth: r.special ? 104 : 46, padding:"5px 4px", borderRadius:8, border:"1.5px solid " + (on ? (busy ? "#EF4444" : "#143B31") : r.camera ? "#3B82F6" : t.bord), background:bg, color:col, cursor:"pointer", fontSize:12, fontWeight:800, lineHeight:1.15, textAlign:"center" }}>
+        {r.label}{r.camera && " 📷"}
+        <div style={{ fontSize:9, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth: r.special ? 96 : 44 }}>{busy ? occ[0].dog.name : notRec ? "mejor abajo" : ""}</div>
+      </button>
+    );
+  };
+  return (
+    <div style={{ background:t.surf, border:"1px solid " + t.bord, borderRadius:11, padding:"12px 13px", display:"flex", flexDirection:"column", gap:10 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, flexWrap:"wrap" }}>
+        <Lbl dark={dark}>JAULA {cur ? "· " + roomLabel(cur.id) + (cur.camera ? " (con cámara)" : cur.special ? "" : " (sin cámara)") + (cur.upper ? " · arriba" : "") : ""}</Lbl>
+        <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontWeight:700, color:t.text2, cursor:"pointer" }}>
+          <input type="checkbox" checked={!!stay.wantsCamera} onChange={e => onCamera(e.target.checked)} /> Pidió cámara 📷
+        </label>
+      </div>
+      {!ready ? <div style={{ fontSize:12, color:t.text3 }}>Captura la fecha de entrada para ver la disponibilidad.</div> : (
+        <div style={{ fontSize:12, padding:"8px 11px", borderRadius:9, background: free.length ? (dark ? "#14301F" : "#ECFDF5") : "#FEF2F2", color: free.length ? "#15803D" : "#B91C1C", fontWeight:700 }}>
+          {free.length
+            ? <>✓ Hay disponibilidad: {free.length} jaula{free.length !== 1 ? "s" : ""} libre{free.length !== 1 ? "s" : ""} ({freeLower.length} abajo, {free.length - freeLower.length} arriba · {freeCam.length} con cámara){!stay.checkOut && " · sin fecha de salida, se revisa desde la entrada en adelante"}</>
+            : <>✗ No hay jaulas disponibles en esas fechas</>}
+          {stay.wantsCamera && freeCam.length === 0 && free.length > 0 && <div style={{ color:"#B91C1C" }}>No hay jaulas con cámara libres en esas fechas.</div>}
+          {big && freeLower.length === 0 && free.length > 0 && <div style={{ color:"#C2410C" }}>Alta demanda: abajo está lleno, se puede acomodar arriba.</div>}
+        </div>
+      )}
+      {curConflict.length > 0 && <div style={{ fontSize:12, fontWeight:800, color:"#B91C1C" }}>⚠ {roomLabel(cur.id)} ya está ocupada por {curConflict.map(o => o.dog.name + " (" + fmtDMY(o.stay.checkIn) + " al " + fmtDMY(o.stay.checkOut) + ")").join(", ")}</div>}
+      {ready && (
+        <>
+          <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+            {sug && sug.id !== cur?.id && <button type="button" onClick={() => onPick(sug.id)} style={{ padding:"5px 12px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontSize:12, fontWeight:800, cursor:"pointer" }}>Asignar sugerida: {roomLabel(sug.id)}{sug.camera ? " 📷" : ""}</button>}
+            <div style={{ display:"flex", gap:10, flexWrap:"wrap", fontSize:10, color:t.text3 }}>
+              {legend(dark ? "#14301F" : "#ECFDF5", t.bord, "Libre")}{legend(dark ? "#2a2a2a" : "#E5E7EB", t.bord, "Ocupada")}{big && freeLower.length > 0 && legend("#FFF7ED", t.bord, "Arriba: mejor abajo mientras haya lugar")}{legend(t.surf, "#3B82F6", "Con cámara")}
+            </div>
+          </div>
+          <div style={{ fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.06em" }}>ABAJO (1–{UPPER_FROM - 1})</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => !r.special && !r.upper).map(cell)}</div>
+          <div style={{ fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.06em" }}>ARRIBA ({UPPER_FROM}–28) · de preferencia pequeños y medianos</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => !r.special && r.upper).map(cell)}</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => r.special).map(cell)}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Vista de acomodo: quién está en cada jaula en un día y consulta de disponibilidad.
+function AcomodoView({ all, dark, onEdit }) {
+  const t = getT(dark);
+  const [day, setDay] = useState(todayYMD());
+  const [qIn, setQIn] = useState(todayYMD());
+  const [qOut, setQOut] = useState("");
+  const rows = roomsOnDay(all, day);
+  const un = unassignedOnDay(all, day);
+  const occupied = rows.filter(r => r.occ.length && !r.room.special).length;
+  const regular = HOTEL_ROOMS.filter(r => !r.special).length;
+  const qRange = { checkIn: qIn, checkOut: qOut };
+  const qFree = qIn && qOut && qOut > qIn ? freeRooms(all, qRange) : null;
+  const td = { padding:"6px 10px", fontSize:13, color:t.text, borderTop:"1px solid " + t.bord };
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      <Card dark={dark}>
+        <div style={{ fontWeight:800, fontSize:14, color:t.text, marginBottom:10 }}>¿Hay lugar? Consulta de disponibilidad</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:11, alignItems:"end" }}>
+          <Field dark={dark} label="ENTRADA" type="date" value={qIn} onChange={setQIn} />
+          <Field dark={dark} label="SALIDA" type="date" value={qOut} onChange={setQOut} />
+        </div>
+        {qFree && (
+          <div style={{ marginTop:11, padding:"10px 13px", borderRadius:10, background: qFree.length ? (dark ? "#14301F" : "#ECFDF5") : "#FEF2F2", color: qFree.length ? "#15803D" : "#B91C1C", fontSize:13, fontWeight:700, lineHeight:1.6 }}>
+            {qFree.length ? <>✓ Sí hay disponibilidad: {qFree.length} jaula{qFree.length !== 1 ? "s" : ""} libre{qFree.length !== 1 ? "s" : ""} del {fmtDMY(qIn)} al {fmtDMY(qOut)}</> : <>✗ No hay jaulas disponibles del {fmtDMY(qIn)} al {fmtDMY(qOut)}</>}
+            {qFree.length > 0 && <div style={{ fontWeight:600, fontSize:12, color:t.text2 }}>
+              <div>Abajo: {qFree.filter(r => !r.upper).map(r => r.label + (r.camera ? "📷" : "")).join(", ") || "ninguna"}</div>
+              <div>Arriba (de preferencia pequeños y medianos): {qFree.filter(r => r.upper).map(r => r.label).join(", ") || "ninguna"}</div>
+              <div>Con cámara: {qFree.filter(r => r.camera).map(r => r.label).join(", ") || "ninguna"}</div>
+            </div>}
+          </div>
+        )}
+      </Card>
+
+      <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", gap:12, alignItems:"flex-end", flexWrap:"wrap" }}>
+          <div style={{ width:170 }}><Field dark={dark} label="ACOMODO DEL DÍA" type="date" value={day} onChange={v => v && setDay(v)} /></div>
+          <div style={{ fontSize:12, color:t.text2, paddingBottom:10 }}><b style={{ color:t.text }}>{occupied}</b> de {regular} jaulas ocupadas · <b style={{ color:t.text }}>{regular - occupied}</b> libres</div>
+        </div>
+        <button onClick={() => printHtml(acomodoHtml(all, day))} style={{ padding:"9px 16px", borderRadius:11, border:"1.5px solid #143B31", background:"#E8F0DC", color:"#143B31", fontWeight:800, cursor:"pointer", fontSize:13 }}>🖨 Imprimir acomodo</button>
+      </div>
+      {un.length > 0 && <div style={{ padding:"9px 13px", borderRadius:10, background:"#FEF2F2", border:"1px solid #FECACA", color:"#B91C1C", fontSize:12, fontWeight:700 }}>⚠ Sin jaula asignada: {un.map(({ dog, stay }) => <button key={stay.id} onClick={() => onEdit(dog, stay)} style={{ border:"none", background:"none", color:"#B91C1C", textDecoration:"underline", fontWeight:800, cursor:"pointer", fontSize:12, padding:"0 3px" }}>{dog.name}</button>)}</div>}
+      <div style={{ overflowX:"auto", borderRadius:14, border:"1px solid " + t.bord, background:t.surf }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:560 }}>
+          <thead><tr>{["Perro","Habitación","Cámara","Salida"].map(h => <th key={h} style={{ padding:"9px 10px", background:"#C1712C", color:"white", fontSize:12, fontWeight:800, textAlign: h === "Perro" ? "left" : "center" }}>{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.map(({ room, occ }) => (
+              <Fragment key={room.id}>
+                {room.id === String(UPPER_FROM) && <tr><td colSpan={4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>ARRIBA (JAULAS {UPPER_FROM}–28) · DE PREFERENCIA PEQUEÑOS Y MEDIANOS</td></tr>}
+                {room.id === "vet" && <tr><td colSpan={4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>OTROS</td></tr>}
+                <tr style={{ background: occ.length > 1 ? "#FEF2F2" : occ.length ? (dark ? "#14301F" : "#F3F9EC") : "transparent" }}>
+                  <td style={td}>{occ.map(({ dog, stay }) => (
+                    <div key={stay.id} onClick={() => onEdit(dog, stay)} style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer", padding:"1px 0" }}>
+                      <DogAvatar dog={dog} size={22} /><b>{dog.name}</b>
+                      <span style={{ fontSize:11, color:t.text3 }}>{[dog.breed, dogSize(dog.weight)?.label].filter(Boolean).join(" · ")}</span>
+                      {stay.checkOut === day && <span style={{ fontSize:10, fontWeight:800, color:"#C2410C" }}>SALE HOY</span>}
+                      {stay.checkIn === day && <span style={{ fontSize:10, fontWeight:800, color:"#15803D" }}>LLEGA HOY</span>}
+                      {room.upper && BIG_SIZES.has(dogSize(dog.weight)?.label) && <span title="Perrito grande arriba" style={{ fontSize:10, fontWeight:700, color:t.text3 }}>(grande arriba)</span>}
+                    </div>
+                  ))}</td>
+                  <td style={{ ...td, textAlign:"center", fontWeight:800 }}>{room.label}</td>
+                  <td style={{ ...td, textAlign:"center", fontSize:12, fontWeight: room.camera ? 800 : 500, color: room.camera ? "#2563EB" : t.text3 }}>{room.special ? "" : room.camera ? "📷 Con cámara" : "Sin cámara"}</td>
+                  <td style={{ ...td, textAlign:"center", fontSize:12 }}>{occ.map(({ stay }) => <div key={stay.id}>{fmtShortDate(stay.checkOut)}</div>)}</td>
+                </tr>
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }) {
   const t = getT(dark);
   const [dogId, setDogId] = useState(initialDog?.id || "");
@@ -950,6 +1178,10 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
     if (!dog) { alert("Elige al perrito"); return; }
     if (!stay.checkIn) { alert("Captura la fecha de entrada"); return; }
     if (stay.checkOut && stay.checkOut < stay.checkIn) { alert("La fecha de salida es antes de la entrada"); return; }
+    const allStays = dogs.flatMap(d => (d.hotelStays || []).map(st => ({ dog:d, stay:st })));
+    const r = roomOf(stay.cage);
+    const clash = r && !r.special ? roomOccupants(allStays, r.id, stay, stay.id) : [];
+    if (clash.length && !confirm(roomLabel(r.id) + " ya está ocupada por " + clash.map(o => o.dog.name).join(", ") + " en esas fechas. ¿Guardar de todos modos?")) return;
     setSaving(true);
     const ok = await onSave(dog, eff);
     setSaving(false);
@@ -992,9 +1224,9 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
             <Field dark={dark} label="FECHA ENTRADA" type="date" value={stay.checkIn} onChange={v => set("checkIn", v)} />
             <Field dark={dark} label="FECHA SALIDA" type="date" value={stay.checkOut} onChange={v => set("checkOut", v)} />
             <div><Lbl dark={dark}>NO. NOCHES</Lbl><div style={{ ...inp(dark, true), color:t.text, fontWeight:800 }}>{nights ?? "—"}</div></div>
-            <Field dark={dark} label="JAULA" value={stay.cage} onChange={v => set("cage", v)} />
-            <Field dark={dark} label="CÁMARA" value={stay.camera} onChange={v => set("camera", v)} />
           </div>
+          <RoomPicker dark={dark} all={dogs.flatMap(d => (d.hotelStays || []).map(st => ({ dog:d, stay:st })))} stay={stay} dog={dog}
+            onPick={id => set("cage", id)} onCamera={v => set("wantsCamera", v)} />
           {/* Precio */}
           <div style={{ background:t.surf, border:"1px solid " + t.bord, borderRadius:11, padding:"12px 13px", display:"flex", flexDirection:"column", gap:10 }}>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:11, alignItems:"end" }}>
@@ -1095,6 +1327,7 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
 function HotelPanel({ dogs, dark, onOpenDog }) {
   const t = getT(dark);
   const [month, setMonth] = useState(() => todayYMD().slice(0, 7)); // "2026-10" o "all"
+  const [mode, setMode] = useState("agenda"); // agenda | acomodo
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null); // { dog, stay } | { new:true }
   const [sel, setSel] = useState({}); // { "dogId|stayId": true }
@@ -1139,15 +1372,17 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
         <div>
           <h2 style={{ margin:0, fontSize:19, color:t.text }}>🏨 Hotel</h2>
-          <div style={{ fontSize:12, color:t.text3, marginTop:2 }}>{inHouse.length} hospedado{inHouse.length !== 1 ? "s" : ""} hoy</div>
+          <div style={{ fontSize:12, color:t.text3, marginTop:2 }}>{inHouse.length} hospedado{inHouse.length !== 1 ? "s" : ""} hoy · {freeRooms(all, { checkIn:today, checkOut:addDayYMD(today) }).length} jaulas libres hoy</div>
+        </div>
+        <div style={{ display:"flex", background:t.surf2, borderRadius:11, padding:3, border:"1px solid " + t.bord }}>
+          {[["agenda","📋 Agenda"],["acomodo","🗂 Acomodo y disponibilidad"]].map(([k,l]) => <button key={k} onClick={() => setMode(k)} style={{ padding:"7px 13px", borderRadius:9, border:"none", background: mode===k ? t.surf : "transparent", boxShadow: mode===k ? "0 1px 4px #0002" : "none", color: mode===k ? t.text : t.text3, fontWeight:800, fontSize:12, cursor:"pointer" }}>{l}</button>)}
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {selected.length > 0 && <button onClick={() => printStaySheets(selected)} style={{ padding:"9px 16px", borderRadius:11, border:"1.5px solid #143B31", background:"#E8F0DC", color:"#143B31", fontWeight:800, cursor:"pointer", fontSize:13 }}>🖨 Imprimir {selected.length} hoja{selected.length !== 1 ? "s" : ""} ({Math.ceil(selected.length / 2)} pág.)</button>}
           <button onClick={() => setEditing({ new:true })} style={{ padding:"9px 18px", borderRadius:11, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:800, cursor:"pointer", fontSize:13 }}>+ Agendar estancia</button>
         </div>
       </div>
-      <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
-      </div>
+      {mode === "acomodo" ? <AcomodoView dark={dark} all={all} onEdit={(dog, stay) => setEditing({ dog, stay })} /> : <>
       <div style={{ display:"flex", gap:4, overflowX:"auto", WebkitOverflowScrolling:"touch", borderBottom:"2px solid " + t.bord, paddingBottom:0 }}>
         {[...months, "all"].map(ym => { const on = month === ym; const n = ym === "all" ? all.length : countIn(ym); return (
           <button key={ym} onClick={() => { setMonth(ym); setSel({}); }} style={{ padding:"9px 15px", border:"none", borderBottom:"3px solid " + (on ? "#C1712C" : "transparent"), marginBottom:-2, background:"transparent", color: on ? t.text : t.text3, fontWeight: on ? 900 : 700, fontSize:13, cursor:"pointer", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:6 }}>
@@ -1190,8 +1425,8 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
                     <td style={td}>{stay.deposit ? fmtMoney(money(stay.deposit)) : ""}</td>
                     <td style={{ ...td, fontWeight:800, color: stay.paid || rest === 0 ? "#15803D" : "#DC2626" }}>{stay.total ? fmtMoney(rest) : "—"}</td>
                     <td style={td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={!!stay.paid} onChange={e => saveStay(dog, { ...stay, paid: e.target.checked })} style={{ width:18, height:18, cursor:"pointer" }} /></td>
-                    <td style={td}>{stay.cage || ""}</td>
-                    <td style={td}>{stay.camera || ""}</td>
+                    <td style={td}>{(() => { const r = roomOf(stay.cage); const clash = r && !r.special ? roomOccupants(all, r.id, stay, stay.id) : []; return <span title={clash.length ? "Choca con " + clash.map(o => o.dog.name).join(", ") : ""} style={{ fontWeight:800, color: clash.length ? "#DC2626" : t.text }}>{clash.length ? "⚠ " : ""}{r ? r.label : (stay.cage || "")}{r?.upper ? <span style={{ fontSize:9, color:t.text3, fontWeight:700 }}> arriba</span> : null}</span>; })()}</td>
+                    <td style={td}>{(() => { const r = roomOf(stay.cage); return r && !r.special ? <span style={{ fontSize:12, fontWeight: r.camera ? 800 : 500, color: r.camera ? "#2563EB" : t.text3 }}>{r.camera ? "📷 Con" : "Sin"}</span> : (stay.camera || ""); })()}{stay.wantsCamera && !roomOf(stay.cage)?.camera ? <div style={{ fontSize:9, color:"#DC2626", fontWeight:800 }}>pidió cámara</div> : null}</td>
                     <td style={{ ...td, whiteSpace:"normal", minWidth:200, maxWidth:320, textAlign:"left", fontSize:12 }}>{stay.notes || ""}</td>
                     <td style={{ ...td, whiteSpace:"nowrap" }} onClick={e => e.stopPropagation()}>
                       <div style={{ display:"flex", gap:5, justifyContent:"flex-end" }}>
@@ -1207,6 +1442,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
           </table>
         </div>
       )}
+      </>}
       {editing && <HotelStayForm dark={dark} dogs={dogs} initialDog={editing.dog} initialStay={editing.stay} onSave={saveStay} onCancel={() => setEditing(null)} />}
     </div>
   );
