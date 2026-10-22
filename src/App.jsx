@@ -971,7 +971,7 @@ function acomodoHtml(all, day) {
   const dateTitle = (() => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day); return m ? (+m[3]) + " de " + MONTHS_ES[+m[2] - 1].toLowerCase() + " " + m[1] : day; })();
   const who = occ => occ.map(({ dog, stay }) => {
     const tag = stay.checkOut === day ? " (sale hoy)" : stay.checkIn === day ? " (llega hoy)" : "";
-    return '<b>' + escHtml(dog.name) + '</b>' + (dog.breed ? ' <span class="sm">' + escHtml(dog.breed) + '</span>' : '') + '<span class="sm">' + tag + '</span>';
+    return '<b>' + escHtml(dog.name) + '</b>' + (dog.noExpediente ? ' <span class="sm">[sin expediente]</span>' : '') + (dog.breed ? ' <span class="sm">' + escHtml(dog.breed) + '</span>' : '') + '<span class="sm">' + tag + '</span>';
   }).join("<br>");
   const salida = occ => occ.map(({ stay }) => fmtShortDate(stay.checkOut)).filter(Boolean).join("<br>");
   const body = rows.map(({ room, occ }) =>
@@ -1128,7 +1128,7 @@ function AcomodoView({ all, dark, onEdit }) {
                 <tr style={{ background: occ.length > 1 ? "#FEF2F2" : occ.length ? (dark ? "#14301F" : "#F3F9EC") : "transparent" }}>
                   <td style={td}>{occ.map(({ dog, stay }) => (
                     <div key={stay.id} onClick={() => onEdit(dog, stay)} style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer", padding:"1px 0" }}>
-                      <DogAvatar dog={dog} size={22} /><b>{dog.name}</b>
+                      <DogAvatar dog={dog} size={22} /><b>{dog.name}</b>{dog.noExpediente && <span style={{ background:"#F97316", color:"white", borderRadius:99, padding:"0 6px", fontSize:9, fontWeight:800 }}>SIN EXPEDIENTE</span>}
                       {dog.breed && <span style={{ fontSize:11, color:t.text3 }}>{dog.breed}</span>}
                       {stay.checkOut === day && <span style={{ fontSize:10, fontWeight:800, color:"#C2410C" }}>SALE HOY</span>}
                       {stay.checkIn === day && <span style={{ fontSize:10, fontWeight:800, color:"#15803D" }}>LLEGA HOY</span>}
@@ -1201,7 +1201,7 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
           {dog ? (
             <div style={{ display:"flex", alignItems:"center", gap:11 }}>
               <DogAvatar dog={dog} size={42} />
-              <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}</div><div style={{ fontSize:12, color:t.text2 }}>{[dog.breed, dog.owner].filter(Boolean).join(" · ")}</div></div>
+              <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}{dog.noExpediente && <span style={{ marginLeft:7, background:"#F97316", color:"white", borderRadius:99, padding:"1px 8px", fontSize:10, fontWeight:800 }}>SIN EXPEDIENTE</span>}</div><div style={{ fontSize:12, color:t.text2 }}>{[dog.breed, dog.owner].filter(Boolean).join(" · ")}</div></div>
               {isNew && !initialDog && <button onClick={() => setDogId("")} style={{ padding:"5px 11px", borderRadius:8, border:"1px solid " + t.bord, background:t.surf, color:t.text2, fontSize:12, fontWeight:700, cursor:"pointer" }}>Cambiar</button>}
             </div>
           ) : (
@@ -1322,10 +1322,224 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
   );
 }
 
+// ---- HOTEL: importar agenda desde Excel --------------------------------------
+const normTxt = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+const firstWord = s => normTxt(s).split(/[\s/,.-]+/)[0] || "";
+function levenshtein(a, b) {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length:n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+// Razas parecidas: "Border C" ≈ "Border Collie", "Yorki" ≈ "Yorkshire", "Shnauzer" ≈ "Schnauzer".
+function similarBreed(a, b) {
+  const x = firstWord(a), y = firstWord(b);
+  if (!x || !y) return true;
+  return x === y || x.startsWith(y.slice(0, 4)) || y.startsWith(x.slice(0, 4)) || levenshtein(x, y) <= 2;
+}
+// Nombres parecidos para el acomodo: "MYLO CHIHUAHUA" ≈ "Milo".
+const nameKey = s => firstWord(s).replace(/y/g, "i");
+const cellYMD = v => {
+  if (v instanceof Date && !isNaN(v)) return v.getUTCFullYear() + "-" + String(v.getUTCMonth() + 1).padStart(2, "0") + "-" + String(v.getUTCDate()).padStart(2, "0");
+  const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/.exec(String(v ?? "").trim());
+  if (m) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+  const m2 = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? "").trim());
+  return m2 ? m2[0] : "";
+};
+const cellNum = v => typeof v === "number" ? v : money(v);
+const cellBool = v => v === true || ["si", "sí", "true", "x", "1", "verdadero", "pagado"].includes(normTxt(v));
+
+// Lee las hojas del Excel: agenda (Fecha entrada, Fecha salida, Lomito...) y acomodo (Perro, Habitación, Salida).
+function parseHotelWorkbook(sheets) {
+  const rows = [], acomodo = [];
+  for (const { sheet, data } of sheets) {
+    const hIdx = data.findIndex(r => r.some(c => normTxt(c) === "lomito") && r.some(c => normTxt(c).startsWith("fecha entrada")));
+    if (hIdx >= 0) {
+      const H = data[hIdx].map(normTxt);
+      const col = (...names) => H.findIndex(h => names.some(n => h === n || h.startsWith(n)));
+      const c = { in:col("fecha entrada"), out:col("fecha salida"), breed:col("raza"), name:col("lomito"), total:col("total"), dep:col("abono"), paid:col("pagado"), cage:col("jaula"), cam:col("camara"), notes:col("notas") };
+      data.slice(hIdx + 1).forEach((r, i) => {
+        const name = String(r[c.name] ?? "").trim();
+        const checkIn = cellYMD(r[c.in]);
+        if (!name || !checkIn) return;
+        rows.push({
+          key: sheet + "#" + (hIdx + i + 2), sheet, line: hIdx + i + 2,
+          name, breed: String(r[c.breed] ?? "").trim(), checkIn, checkOut: cellYMD(r[c.out]),
+          total: c.total >= 0 && r[c.total] != null ? String(cellNum(r[c.total])) : "",
+          deposit: c.dep >= 0 && r[c.dep] != null ? String(cellNum(r[c.dep])) : "",
+          paid: c.paid >= 0 && cellBool(r[c.paid]),
+          cage: c.cage >= 0 && r[c.cage] != null && String(r[c.cage]).trim() ? String(r[c.cage]).trim() : "",
+          wantsCamera: c.cam >= 0 && cellBool(r[c.cam]),
+          notes: c.notes >= 0 ? String(r[c.notes] ?? "").trim() : "",
+        });
+      });
+      continue;
+    }
+    const aIdx = data.findIndex(r => r.some(c => normTxt(c) === "perro") && r.some(c => normTxt(c).startsWith("habitacion")));
+    if (aIdx >= 0) {
+      const H = data[aIdx].map(normTxt);
+      const cP = H.indexOf("perro"), cH = H.findIndex(h => h.startsWith("habitacion")), cS = H.findIndex(h => h.startsWith("salida"));
+      data.slice(aIdx + 1).forEach(r => {
+        const name = String(r[cP] ?? "").trim(), room = roomOf(r[cH]);
+        if (name && room) acomodo.push({ name, room: room.id, salida: cS >= 0 ? cellYMD(r[cS]) : "" });
+      });
+    }
+  }
+  // Jaulas de la hoja de acomodo para las estancias que no traen jaula.
+  for (const a of acomodo) {
+    const hit = rows.find(r => !r.cage && nameKey(r.name) === nameKey(a.name) && (!a.salida || r.checkOut === a.salida))
+      || rows.find(r => !r.cage && levenshtein(nameKey(r.name), nameKey(a.name)) <= 1 && a.salida && r.checkOut === a.salida);
+    if (hit) { hit.cage = a.room; hit.cageFromAcomodo = true; }
+  }
+  return { rows, acomodo };
+}
+
+// Agrupa las filas por perrito (nombre + raza parecida) y busca su expediente.
+function planHotelImport(rows, dogs) {
+  const groups = [];
+  for (const r of rows) {
+    let g = groups.find(g => normTxt(g.name) === normTxt(r.name) && similarBreed(g.breed, r.breed));
+    if (!g) {
+      const cands = dogs.filter(d => normTxt(d.name) === normTxt(r.name));
+      const best = cands.find(d => d.breed && r.breed && similarBreed(d.breed, r.breed)) || (cands.length === 1 && (!cands[0].breed || !r.breed) ? cands[0] : null);
+      g = { id: "g" + groups.length, name: r.name, breed: r.breed, candidates: cands, dogId: best ? best.id : "new", rows: [] };
+      groups.push(g);
+    }
+    if (!g.breed && r.breed) g.breed = r.breed;
+    g.rows.push(r);
+  }
+  return groups;
+}
+
+function rowToStay(r, dog) {
+  return {
+    ...newHotelStay(dog), checkIn: r.checkIn, checkOut: r.checkOut, total: r.total, deposit: r.deposit, paid: r.paid,
+    cage: r.cage, wantsCamera: r.wantsCamera, notes: r.notes, nightlyRate: "", rateAuto: false, importedFrom: "excel",
+  };
+}
+
+function HotelImportModal({ dogs, dark, onClose }) {
+  const t = getT(dark);
+  const ref = useRef();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [groups, setGroups] = useState(null);
+  const [acomodoN, setAcomodoN] = useState(0);
+  const [done, setDone] = useState(null);
+  const isDup = (dog, r) => (dog?.hotelStays || []).some(s => s.checkIn === r.checkIn && (s.checkOut || "") === (r.checkOut || ""));
+  const onFile = async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    setErr(""); setBusy(true); setFileName(f.name); setDone(null);
+    try {
+      const { default: readXlsxFile } = await import("read-excel-file/browser");
+      const sheets = await readXlsxFile(f);
+      const { rows } = parseHotelWorkbook(sheets);
+      if (!rows.length) throw new Error("No encontré filas con 'Fecha entrada' y 'Lomito'. Revisa que el Excel tenga esos encabezados.");
+      setGroups(planHotelImport(rows, dogs));
+      setAcomodoN(rows.filter(r => r.cageFromAcomodo).length);
+    } catch (ex) { console.error(ex); setErr(ex.message || String(ex)); setGroups(null); }
+    setBusy(false);
+  };
+  const setDog = (gid, dogId) => setGroups(gs => gs.map(g => g.id === gid ? { ...g, dogId } : g));
+  const stats = groups ? (() => {
+    let total = 0, dup = 0, newDogs = 0, newStaysForNew = 0;
+    for (const g of groups) {
+      const dog = g.dogId === "new" ? null : dogs.find(d => d.id === g.dogId);
+      if (!dog) newDogs++;
+      for (const r of g.rows) { if (dog && isDup(dog, r)) dup++; else { total++; if (!dog) newStaysForNew++; } }
+    }
+    return { total, dup, newDogs, newStaysForNew };
+  })() : null;
+  const runImport = async () => {
+    setBusy(true); setErr("");
+    let ok = 0, created = 0;
+    const cache = {}; // expedientes ya actualizados en esta importación
+    try {
+      for (const g of groups) {
+        let dog = g.dogId === "new" ? null : (cache[g.dogId] || dogs.find(d => d.id === g.dogId));
+        if (!dog) {
+          dog = { ...defDog(), name: g.name, breed: g.breed, noExpediente: true, hotelStays: [] };
+          created++;
+        }
+        const add = g.rows.filter(r => !isDup(dog, r)).map(r => rowToStay(r, dog.noExpediente ? null : dog));
+        if (!add.length && !dog.noExpediente) continue;
+        const updated = { ...dog, hotelStays: [...(dog.hotelStays || []), ...add] };
+        await setDoc(doc(db, "dogs", dog.id), updated);
+        cache[dog.id] = updated;
+        ok += add.length;
+      }
+      setDone({ ok, created });
+    } catch (ex) { console.error(ex); setErr("Se detuvo la importación: " + (ex.message || ex) + ". Lo que ya se guardó no se duplica si vuelves a importar."); }
+    setBusy(false);
+  };
+  const sel = { padding:"5px 8px", borderRadius:8, border:"1.5px solid " + t.bord, background:t.surf, color:t.text, fontSize:12, maxWidth:"100%" };
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#0008", zIndex:500, display:"flex", alignItems:"flex-start", justifyContent:"center", overflowY:"auto", padding:"24px 12px" }} onClick={() => !busy && onClose()}>
+      <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:860, background:t.surf, borderRadius:20, padding:"20px", display:"flex", flexDirection:"column", gap:14, border:"1px solid " + t.bord }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <h2 style={{ margin:0, fontSize:18, color:t.text }}>📥 Importar agenda desde Excel</h2>
+          <button disabled={busy} onClick={onClose} style={{ background:"none", border:"none", fontSize:20, cursor:"pointer", color:t.text3 }}>✕</button>
+        </div>
+        {done ? (
+          <div style={{ padding:"18px", borderRadius:14, background:"#F0FDF4", border:"1px solid #86EFAC", color:"#15803D", fontWeight:700, fontSize:14, lineHeight:1.6 }}>
+            ✓ Se importaron {done.ok} estancia{done.ok !== 1 ? "s" : ""}.{done.created > 0 && <> Se agregaron {done.created} perrito{done.created !== 1 ? "s" : ""} marcados como <b>SIN EXPEDIENTE</b>.</>}
+            <div><button onClick={onClose} style={{ marginTop:10, padding:"8px 18px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:800, cursor:"pointer" }}>Ver agenda</button></div>
+          </div>
+        ) : <>
+          <div style={{ fontSize:12, color:t.text2, lineHeight:1.5 }}>Sube el Excel con las columnas <b>Fecha entrada, Fecha salida, Raza, Lomito, Total, Abono, Pagado, Jaula, Cámara y Notas</b>. Si trae la hoja de <b>acomodo</b>, también toma las jaulas. Antes de guardar puedes revisar a qué expediente va cada perrito.</div>
+          <input ref={ref} type="file" accept=".xlsx" style={{ display:"none" }} onChange={onFile} />
+          <button disabled={busy} onClick={() => ref.current.click()} style={{ alignSelf:"flex-start", padding:"9px 16px", borderRadius:10, border:"1.5px dashed " + t.acc, background:t.accBg, color:t.accD, fontWeight:800, cursor: busy ? "wait" : "pointer", fontSize:13 }}>{busy && !groups ? "Leyendo..." : fileName ? "📄 " + fileName + " · cambiar" : "📄 Elegir archivo .xlsx"}</button>
+          {err && <div style={{ padding:"9px 12px", borderRadius:9, background:"#FEF2F2", color:"#B91C1C", fontSize:12, fontWeight:700 }}>{err}</div>}
+          {groups && stats && <>
+            <div style={{ display:"flex", gap:14, flexWrap:"wrap", fontSize:12, color:t.text2 }}>
+              <span><b style={{ color:t.text }}>{stats.total}</b> estancias por importar</span>
+              <span><b style={{ color:t.text }}>{groups.length}</b> perritos</span>
+              <span><b style={{ color:"#C2410C" }}>{stats.newDogs}</b> sin expediente</span>
+              {stats.dup > 0 && <span><b>{stats.dup}</b> ya estaban (se omiten)</span>}
+              {acomodoN > 0 && <span><b>{acomodoN}</b> jaulas tomadas del acomodo</span>}
+            </div>
+            <div style={{ maxHeight:420, overflowY:"auto", border:"1px solid " + t.bord, borderRadius:12 }}>
+              <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                <thead><tr>{["Lomito (Excel)","Raza","Estancias","Expediente"].map(h => <th key={h} style={{ position:"sticky", top:0, background:"#C1712C", color:"white", fontSize:12, padding:"8px 10px", textAlign:"left" }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {groups.map(g => { const isNew = g.dogId === "new"; return (
+                    <tr key={g.id} style={{ background: isNew ? "#FFF7ED" : "transparent", borderTop:"1px solid " + t.bord }}>
+                      <td style={{ padding:"7px 10px", fontSize:13, fontWeight:800, color:t.text }}>{g.name}</td>
+                      <td style={{ padding:"7px 10px", fontSize:12, color:t.text2 }}>{g.breed || "—"}</td>
+                      <td style={{ padding:"7px 10px", fontSize:12, color:t.text2 }}>{g.rows.map(r => fmtShortDate(r.checkIn) + "–" + fmtShortDate(r.checkOut)).join(", ")}</td>
+                      <td style={{ padding:"7px 10px" }}>
+                        <select value={g.dogId} onChange={e => setDog(g.id, e.target.value)} style={{ ...sel, borderColor: isNew ? "#F97316" : t.bord, color: isNew ? "#C2410C" : t.text, fontWeight:700 }}>
+                          <option value="new">SIN EXPEDIENTE (agregar)</option>
+                          {g.candidates.map(d => <option key={d.id} value={d.id}>{d.name}{d.breed ? " · " + d.breed : ""}{d.owner ? " · " + d.owner : ""}{d.noExpediente ? " (sin expediente)" : ""}</option>)}
+                          {g.candidates.length === 0 && <optgroup label="Otro expediente">{dogs.filter(d => !d.noExpediente).slice().sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(d => <option key={d.id} value={d.id}>{d.name}{d.breed ? " · " + d.breed : ""}</option>)}</optgroup>}
+                        </select>
+                      </td>
+                    </tr>
+                  ); })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+              <button disabled={busy} onClick={onClose} style={{ padding:"9px 16px", borderRadius:10, border:"1.5px solid " + t.bord, background:t.surf, color:t.text2, fontWeight:700, cursor:"pointer", fontSize:13 }}>Cancelar</button>
+              <button disabled={busy || stats.total === 0} onClick={runImport} style={{ padding:"9px 18px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:800, cursor: busy ? "wait" : "pointer", fontSize:13, opacity: stats.total === 0 ? 0.5 : 1 }}>{busy ? "Importando..." : "Importar " + stats.total + " estancia" + (stats.total !== 1 ? "s" : "")}</button>
+            </div>
+          </>}
+        </>}
+      </div>
+    </div>
+  );
+}
+
 function HotelPanel({ dogs, dark, onOpenDog }) {
   const t = getT(dark);
   const [month, setMonth] = useState(() => todayYMD().slice(0, 7)); // "2026-10" o "all"
   const [mode, setMode] = useState("agenda"); // agenda | acomodo
+  const [showImport, setShowImport] = useState(false);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null); // { dog, stay } | { new:true }
   const [sel, setSel] = useState({}); // { "dogId|stayId": true }
@@ -1377,6 +1591,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {selected.length > 0 && <button onClick={() => printStaySheets(selected)} style={{ padding:"9px 16px", borderRadius:11, border:"1.5px solid #143B31", background:"#E8F0DC", color:"#143B31", fontWeight:800, cursor:"pointer", fontSize:13 }}>🖨 Imprimir {selected.length} hoja{selected.length !== 1 ? "s" : ""} ({Math.ceil(selected.length / 2)} pág.)</button>}
+          <button onClick={() => setShowImport(true)} style={{ padding:"9px 14px", borderRadius:11, border:"1.5px solid " + t.bord, background:t.surf, color:t.text2, fontWeight:800, cursor:"pointer", fontSize:13 }}>📥 Importar Excel</button>
           <button onClick={() => setEditing({ new:true })} style={{ padding:"9px 18px", borderRadius:11, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:800, cursor:"pointer", fontSize:13 }}>+ Agendar estancia</button>
         </div>
       </div>
@@ -1412,13 +1627,13 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
                 const here = stay.checkIn && stay.checkIn <= today && (!stay.checkOut || stay.checkOut >= today);
                 const rest = stayRemaining(stay);
                 return (
-                  <tr key={dog.id + stay.id} onClick={() => setEditing({ dog, stay })} style={{ cursor:"pointer", background: here ? (dark ? "#14301F" : "#E8F3DC") : "transparent" }}>
+                  <tr key={dog.id + stay.id} onClick={() => setEditing({ dog, stay })} style={{ cursor:"pointer", background: dog.noExpediente ? (dark ? "#3A2410" : "#FFEDD5") : here ? (dark ? "#14301F" : "#E8F3DC") : "transparent" }}>
                     <td style={td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={!!sel[keyOf(dog, stay)]} onChange={e => setSel(m => ({ ...m, [keyOf(dog, stay)]: e.target.checked }))} style={{ width:16, height:16, cursor:"pointer" }} /></td>
                     <td style={td}>{fmtDMY(stay.checkIn) || "—"}</td>
                     <td style={td}>{fmtDMY(stay.checkOut) || "—"}</td>
                     <td style={td}>{stayNights(stay) ?? "—"}</td>
                     <td style={td}>{dog.breed || "—"}</td>
-                    <td style={{ ...td, textAlign:"left" }}><div style={{ display:"flex", alignItems:"center", gap:8 }}><DogAvatar dog={dog} size={28} /><span style={{ fontWeight:800 }}>{dog.name}</span>{here && <span style={{ background:"#143B31", color:"#AACC71", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800 }}>HOSPEDADO</span>}</div></td>
+                    <td style={{ ...td, textAlign:"left" }}><div style={{ display:"flex", alignItems:"center", gap:8 }}><DogAvatar dog={dog} size={28} /><span style={{ fontWeight:800 }}>{dog.name}</span>{dog.noExpediente && <span style={{ background:"#F97316", color:"white", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800 }}>SIN EXPEDIENTE</span>}{here && <span style={{ background:"#143B31", color:"#AACC71", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800 }}>HOSPEDADO</span>}</div></td>
                     <td style={td}>{stay.total ? fmtMoney(money(stay.total)) : "—"}</td>
                     <td style={td}>{stay.deposit ? fmtMoney(money(stay.deposit)) : ""}</td>
                     <td style={{ ...td, fontWeight:800, color: stay.paid || rest === 0 ? "#15803D" : "#DC2626" }}>{stay.total ? fmtMoney(rest) : "—"}</td>
@@ -1441,6 +1656,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
         </div>
       )}
       </>}
+      {showImport && <HotelImportModal dark={dark} dogs={dogs} onClose={() => setShowImport(false)} />}
       {editing && <HotelStayForm dark={dark} dogs={dogs} initialDog={editing.dog} initialStay={editing.stay} onSave={saveStay} onCancel={() => setEditing(null)} />}
     </div>
   );
@@ -2767,6 +2983,7 @@ export default function PawPark() {
   const isAdmin = currentUser?.isAdmin;
 
   const handleSave = async dog => {
+    if (dog.noExpediente && (dog.owner?.trim() || dog.phone?.trim())) dog = { ...dog, noExpediente: false };
     try { await setDoc(doc(db, "dogs", dog.id), dog); }
     catch (e) {
       console.error(e);
@@ -2782,10 +2999,11 @@ export default function PawPark() {
     }
   };
 
-  const vacAlerts = dogs.filter(d => ["expired","soon"].includes(ovs(d))).sort((a,b) => ovs(a)==="expired"?-1:1);
-  const incompleteCount = isAdmin ? dogs.filter(d => pmiss(d).length>0).length : 0;
+  const expDogs = dogs.filter(d => !d.noExpediente); // los "sin expediente" (importados del Excel) no cuentan en alertas
+  const vacAlerts = expDogs.filter(d => ["expired","soon"].includes(ovs(d))).sort((a,b) => ovs(a)==="expired"?-1:1);
+  const incompleteCount = isAdmin ? expDogs.filter(d => pmiss(d).length>0).length : 0;
 
-  const FILTERS = [{id:"all",label:"Todos"},{id:"expired",label:"Vencidas"},{id:"soon",label:"Por vencer"},{id:"ok",label:"Al dia"},{id:"nocard",label:"Sin cartilla"},{id:"training",label:"Adiest."},{id:"alto",label:"Sup. Alta"},{id:"incomplete",label:"Incompletos"}];
+  const FILTERS = [{id:"all",label:"Todos"},{id:"expired",label:"Vencidas"},{id:"soon",label:"Por vencer"},{id:"ok",label:"Al dia"},{id:"nocard",label:"Sin cartilla"},{id:"noexp",label:"Sin expediente"},{id:"training",label:"Adiest."},{id:"alto",label:"Sup. Alta"},{id:"incomplete",label:"Incompletos"}];
   const filtered = dogs.filter(d => {
     const q = search.toLowerCase();
     const mq = !q || [d.name,d.owner,d.breed].some(f=>f?.toLowerCase().includes(q));
@@ -2795,6 +3013,7 @@ export default function PawPark() {
     if (filter==="soon") return ovs(d)==="soon";
     if (filter==="ok") return ovs(d)==="ok";
     if (filter==="nocard") return !!d.noVaccineCard;
+    if (filter==="noexp") return !!d.noExpediente;
     if (filter==="training") return d.care?.result==="training";
     if (filter==="alto") return d.care?.supervisionLevel==="alto";
     if (filter==="incomplete") return pmiss(d).length>0;
@@ -2864,7 +3083,7 @@ export default function PawPark() {
               {vacAlerts.length > 0 && <div style={{ textAlign:"right" }}><div style={{ fontSize:11, color:t.text3, marginBottom:5 }}>{vacAlerts.length} perrito{vacAlerts.length>1?"s":""} requieren atencion</div><button onClick={() => setView("list")} style={{ padding:"6px 14px", borderRadius:9, border:"1.5px solid " + t.acc, background:"transparent", color:t.acc, fontWeight:700, fontSize:12, cursor:"pointer" }}>Ver todos</button></div>}
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:11 }}>
-              {[{icon:"🐕",v:dogs.length,label:"Expedientes",c:t.acc},{icon:"✅",v:dogs.filter(d=>ovs(d)==="ok").length,label:"Vacunas al dia",c:"#22C55E"},{icon:"⚠",v:dogs.filter(d=>ovs(d)==="soon").length,label:"Por vencer",c:"#AACC71"},{icon:"🚨",v:dogs.filter(d=>ovs(d)==="expired").length,label:"Vencidas",c:"#EF4444"},{icon:"🎓",v:dogs.filter(d=>d.care?.result==="apt").length,label:"Aptos guarderia",c:"#8B5CF6"}].map(s => (
+              {[{icon:"🐕",v:expDogs.length,label:"Expedientes",c:t.acc},{icon:"✅",v:expDogs.filter(d=>ovs(d)==="ok").length,label:"Vacunas al dia",c:"#22C55E"},{icon:"⚠",v:expDogs.filter(d=>ovs(d)==="soon").length,label:"Por vencer",c:"#AACC71"},{icon:"🚨",v:expDogs.filter(d=>ovs(d)==="expired").length,label:"Vencidas",c:"#EF4444"},{icon:"🎓",v:expDogs.filter(d=>d.care?.result==="apt").length,label:"Aptos guarderia",c:"#8B5CF6"}].map(s => (
                 <Card key={s.label} dark={dark} style={{ border:"2px solid " + s.c + "20" }}>
                   <div style={{ fontSize:22, marginBottom:6 }}>{s.icon}</div>
                   <div style={{ fontSize:26, fontWeight:900, color:s.c, lineHeight:1, fontFamily:"Georgia,serif" }}>{s.v}</div>
@@ -2876,7 +3095,7 @@ export default function PawPark() {
               <Card dark={dark} style={{ border:"2px solid " + t.acc + "30" }}>
                 <div style={{ fontWeight:800, fontSize:14, color:t.text, marginBottom:13 }}>Responsivas pendientes</div>
                 <div style={{ maxHeight:220, overflowY:"auto", display:"flex", flexWrap:"wrap", gap:9, WebkitOverflowScrolling:"touch" }}>
-                  {dogs.filter(d=>pmiss(d).length>0).map(dog => (
+                  {expDogs.filter(d=>pmiss(d).length>0).map(dog => (
                     <div key={dog.id} onClick={() => {setSelDog(dog);setView("detail");}} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 13px", borderRadius:11, border:"1.5px solid " + t.acc + "30", background:t.accBg, cursor:"pointer" }}>
                       <DogAvatar dog={dog} size={32} /><div><div style={{ fontWeight:700, fontSize:12, color:t.text }}>{dog.name}</div><div style={{ fontSize:10, color:t.acc }}>Falta: {pmiss(dog).join(", ")}</div></div>
                     </div>
@@ -3000,7 +3219,7 @@ export default function PawPark() {
                     <Card key={dog.id} dark={dark} onClick={() => {setSelDog(dog);setView("detail");}} style={{ border:"2px solid " + VST[vs].color + "25" }}>
                       <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:9 }}>
                         <DogAvatar dog={dog} size={44} />
-                        <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}</div><div style={{ fontSize:11, color:t.text2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dogAge(dog)?" - "+dogAge(dog):""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div></div>
+                        <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}{dog.noExpediente && <span style={{ marginLeft:6, background:"#F97316", color:"white", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800, verticalAlign:"middle" }}>SIN EXPEDIENTE</span>}</div><div style={{ fontSize:11, color:t.text2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dogAge(dog)?" - "+dogAge(dog):""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div></div>
                         <div style={{ display:"flex", flexDirection:"column", gap:3, alignItems:"flex-end" }}>
                           <VacBadge status={vs} sm />
                           {miss.length > 0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"1px 6px", fontSize:9, fontWeight:800, border:"1px solid " + t.acc + "30" }}>Inc.</span>}
