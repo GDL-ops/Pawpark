@@ -506,6 +506,7 @@ function PhotoUpload({ dog, onChange, dark }) {
 }
 
 const FILE_CHUNK = 700000;
+const PDF_MAX_MB = 7; // Tamaño máximo de las responsivas en PDF
 
 async function uploadPdf(f) {
   const dataUrl = await new Promise((res, rej) => {
@@ -574,7 +575,7 @@ function PdfUpload({ label, value, onChange, dark }) {
   const [busy, setBusy] = useState(false);
   const hf = async e => {
     const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-    if (f.size > 4*1024*1024) { alert("Max 4MB"); return; }
+    if (f.size > PDF_MAX_MB*1024*1024) { alert("El PDF pesa " + (f.size/1024/1024).toFixed(1) + " MB. El máximo es " + PDF_MAX_MB + " MB."); return; }
     setBusy(true);
     try {
       const meta = await uploadPdf(f);
@@ -602,7 +603,7 @@ function PdfUpload({ label, value, onChange, dark }) {
       ) : busy ? (
         <div style={{ textAlign:"center" }}><div style={{ fontSize:26, marginBottom:5 }}>⏳</div><div style={{ fontWeight:700, fontSize:13, color:t.text3 }}>Subiendo PDF...</div></div>
       ) : (
-        <div style={{ textAlign:"center" }}><div style={{ fontSize:26, marginBottom:5 }}>📤</div><div style={{ fontWeight:700, fontSize:13, color:t.text3 }}>{label}</div><div style={{ fontSize:11, color:t.text3, opacity:.6 }}>PDF max. 4MB</div></div>
+        <div style={{ textAlign:"center" }}><div style={{ fontSize:26, marginBottom:5 }}>📤</div><div style={{ fontWeight:700, fontSize:13, color:t.text3 }}>{label}</div><div style={{ fontSize:11, color:t.text3, opacity:.6 }}>PDF máx. {PDF_MAX_MB} MB</div></div>
       )}
     </div>
   );
