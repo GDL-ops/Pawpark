@@ -859,7 +859,7 @@ function staySheetBody(dog, stay) {
     '<tr><td colspan="2" class="top">Lomito: <b>' + escHtml(dog.name) + '</b>' + (dog.breed ? ' (' + escHtml(dog.breed) + ')' : '') + '</td></tr>' +
     '<tr><td colspan="2" class="top">Estancia: <b>' + escHtml(estancia) + '</b></td></tr>' +
     rows +
-    '<tr><td colspan="2" class="hdr">Indicaciones comida y medicamentos</td></tr>' +
+    '<tr><td colspan="2" class="hdr food">INDICACIONES COMIDA Y MEDICAMENTOS</td></tr>' +
     '<tr><td colspan="2" class="big">' + escHtml(stay.feeding) + '</td></tr>' +
     '<tr><td colspan="2" class="hdr">Vet. Emergencia</td></tr>' +
     '<tr><td class="half">' + escHtml(stay.vetName) + '</td><td class="half">' + escHtml(stay.vetPhone) + '</td></tr>' +
@@ -888,7 +888,8 @@ function staySheetsHtml(items) {
     'tr.b td{height:30px}' +
     '.box{display:inline-block;width:15px;height:15px;border:1.6px solid #333;border-radius:2px;line-height:12px;font-size:12px;font-weight:bold;text-align:center}' +
     'td.hdr{text-align:center;font-size:12.5px;height:24px}' +
-    'td.big{height:300px;vertical-align:top;white-space:pre-wrap;font-size:11px;line-height:1.4}' +
+    'td.hdr.food{font-size:14px;font-weight:bold;background:#eee}' +
+    'td.big{height:300px;vertical-align:top;white-space:pre-wrap;font-size:15px;font-weight:bold;line-height:1.45}' +
     'td.half{width:50%;height:28px}' +
     '</style></head><body>' +
     pages.map(pg => '<div class="page">' + pg.map(({ dog, stay }) => staySheetBody(dog, stay)).join("") + '</div>').join("") +
@@ -1064,7 +1065,7 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
             {secT("INDICACIONES COMIDA Y MEDICAMENTOS")}
             {dog && <button type="button" onClick={() => set("feeding", defaultFeedingText(dog))} style={{ padding:"3px 9px", borderRadius:7, border:"1px solid " + t.bord, background:t.surf, color:t.text3, fontSize:11, fontWeight:700, cursor:"pointer" }}>↺ Tomar del expediente</button>}
           </div>
-          <textarea value={stay.feeding || ""} onChange={e => set("feeding", e.target.value)} rows={6} placeholder="Alimento, porciones, horarios, medicamentos y dosis..." style={{ ...inp(dark, false), resize:"vertical", fontFamily:"inherit", lineHeight:1.5 }} />
+          <textarea value={stay.feeding || ""} onChange={e => set("feeding", e.target.value)} rows={6} placeholder="Alimento, porciones, horarios, medicamentos y dosis..." style={{ ...inp(dark, false), resize:"vertical", fontFamily:"inherit", lineHeight:1.5, fontSize:15, fontWeight:700 }} />
         </div>
 
         {/* Contactos */}
