@@ -1448,7 +1448,7 @@ function DetailView({dog, dark, isAdmin, currentUser, t, onBack, onEdit, onDelet
             <DogAvatar dog={dog} size={62} />
             <div>
               <h2 style={{ margin:0, fontSize:20, color:t.text }}>{dog.name}</h2>
-              <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}{dog.weight?" - "+dog.weight:""}</div>
+              <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}{dog.weight?" - "+dog.weight:""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div>
               <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.owner}{dog.phone?" - "+dog.phone:""}</div>
               {(dog.emergencyVet||dog.emergencyVetPhone)&&<div style={{ fontSize:11, color:"#8B5CF6", marginTop:2 }}>{dog.emergencyVet}{dog.emergencyVetPhone?" - "+dog.emergencyVetPhone:""}</div>}
               <div style={{ display:"flex", gap:6, marginTop:7, flexWrap:"wrap" }}>
@@ -2287,7 +2287,7 @@ export default function PawPark() {
                     <Card key={dog.id} dark={dark} onClick={() => {setSelDog(dog);setView("detail");}} style={{ border:"2px solid " + VST[vs].color + "25" }}>
                       <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:9 }}>
                         <DogAvatar dog={dog} size={44} />
-                        <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}</div><div style={{ fontSize:11, color:t.text2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}</div></div>
+                        <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}</div><div style={{ fontSize:11, color:t.text2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div></div>
                         <div style={{ display:"flex", flexDirection:"column", gap:3, alignItems:"flex-end" }}>
                           <VacBadge status={vs} sm />
                           {miss.length > 0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"1px 6px", fontSize:9, fontWeight:800, border:"1px solid " + t.acc + "30" }}>Inc.</span>}
@@ -2350,7 +2350,7 @@ export default function PawPark() {
                     <DogAvatar dog={dog} size={62} />
                     <div>
                       <h2 style={{ margin:0, fontSize:20, color:t.text }}>{dog.name}</h2>
-                      <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}{dog.weight?" - "+dog.weight:""}</div>
+                      <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dog.age?" - "+dog.age:""}{dog.weight?" - "+dog.weight:""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div>
                       <div style={{ fontSize:12, color:t.text2, marginTop:2 }}>{dog.owner}{dog.phone?" - "+dog.phone:""}</div>
                       {(dog.emergencyVet||dog.emergencyVetPhone) && <div style={{ fontSize:11, color:"#8B5CF6", marginTop:2 }}>{dog.emergencyVet}{dog.emergencyVetPhone?" - "+dog.emergencyVetPhone:""}</div>}
                       <div style={{ display:"flex", gap:6, marginTop:7, flexWrap:"wrap" }}>
