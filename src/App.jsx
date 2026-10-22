@@ -790,6 +790,19 @@ function stayNights(stay) {
 const money = v => { const n = parseFloat(String(v ?? "").replace(/[^0-9.]/g, "")); return isNaN(n) ? 0 : n; };
 const fmtMoney = n => "$" + (n || 0).toLocaleString("es-MX", { minimumFractionDigits:2, maximumFractionDigits:2 });
 const stayRemaining = stay => Math.max(0, money(stay?.total) - money(stay?.deposit));
+// Precio por noche de hotel según el tamaño (calculado con el peso). null = sin precio definido: se escribe a mano.
+const HOTEL_RATES = { "Pequeño":null, "Mediano":null, "Grande":null, "Extra grande":null };
+// Extras rápidos que se pueden sumar (amount null = se escribe el monto).
+const HOTEL_EXTRAS = [{ label:"Baño", amount:null }];
+function hotelRateFor(dog) {
+  const sz = dogSize(dog?.weight);
+  return { size: sz?.label || null, kg: parseWeightKg(dog?.weight), rate: sz ? HOTEL_RATES[sz.label] : null };
+}
+const hasRate = stay => String(stay?.nightlyRate ?? "").trim() !== "";
+const extrasTotal = stay => (stay?.extras || []).reduce((a, e) => a + money(e.amount), 0);
+const stayCalcTotal = stay => (stayNights(stay) || 0) * money(stay?.nightlyRate) + extrasTotal(stay);
+// Si la estancia tiene precio por noche, el total se calcula solo; si no (estancias anteriores), se respeta el total capturado.
+const withCalcTotal = stay => hasRate(stay) ? { ...stay, total: String(stayCalcTotal(stay)) } : stay;
 const todayYMD = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); };
 
 // Texto inicial de "Indicaciones comida y medicamentos" tomado del expediente.
@@ -814,6 +827,7 @@ function newHotelStay(dog) {
   return {
     id: mkId(), checkIn: todayYMD(), checkOut: "", notes: "", incidents: [],
     total: "", deposit: "", paid: false, cage: "", camera: "",
+    nightlyRate: dog && hotelRateFor(dog).rate != null ? String(hotelRateFor(dog).rate) : "", extras: [],
     belongings: Object.fromEntries(BELONGINGS.map(b => [b.id, { checked:false, desc:"" }])),
     feeding: dog ? defaultFeedingText(dog) : "",
     vetName: dog?.emergencyVet || "", vetPhone: dog?.emergencyVetPhone || "",
@@ -823,35 +837,20 @@ function newHotelStay(dog) {
 
 const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 
-function staySheetHtml(dog, stay) {
+function staySheetBody(dog, stay) {
   const n = stayNights(stay);
   const estancia = [
     stay.checkIn || stay.checkOut ? fmtDMY(stay.checkIn) + " al " + fmtDMY(stay.checkOut) : "",
     n != null ? n + (n === 1 ? " noche" : " noches") : "",
     stay.cage ? "Jaula " + stay.cage : "",
-  ].filter(Boolean).join("  ·  ");
+  ].filter(Boolean).join(" · ");
   const rows = BELONGINGS.map(b => {
     const it = stay.belongings?.[b.id] || {};
     return '<tr class="b"><td class="chk"><span class="box">' + (it.checked ? "&#10003;" : "") + '</span></td><td>' + b.label + ': <b>' + escHtml(it.desc) + '</b></td></tr>';
   }).join("");
-  return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Hoja de estancia - ' + escHtml(dog.name) + '</title><style>' +
-    '@page{size:letter;margin:14mm}' +
-    '*{box-sizing:border-box}' +
-    'body{margin:0;font-family:"Courier New",Courier,monospace;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
-    '.brand{font-family:Arial,sans-serif;font-size:10px;letter-spacing:.2em;color:#555;text-align:right;margin-bottom:4px}' +
-    'table{width:100%;border-collapse:collapse;border:2px solid #111}' +
-    'td{border:1.5px solid #111;padding:7px 10px;font-size:15px;vertical-align:middle}' +
-    'td.chk{width:34%;text-align:center}' +
-    'tr.b td{height:38px}' +
-    '.box{display:inline-block;width:20px;height:20px;border:2px solid #333;border-radius:3px;line-height:16px;font-size:16px;font-weight:bold;text-align:center}' +
-    'td.hdr{text-align:center;font-size:16px}' +
-    'td.big{height:250px;vertical-align:top;white-space:pre-wrap;font-size:13px;line-height:1.45}' +
-    'td.half{width:50%;height:36px}' +
-    '</style></head><body>' +
-    '<div class="brand">PAW PARK · HOJA DE ESTANCIA</div>' +
-    '<table>' +
-    '<tr><td colspan="2" style="height:44px">Lomito: <b>' + escHtml(dog.name) + '</b>' + (dog.breed ? ' (' + escHtml(dog.breed) + ')' : '') + '</td></tr>' +
-    '<tr><td colspan="2" style="height:44px">Estancia: <b>' + escHtml(estancia) + '</b></td></tr>' +
+  return '<div class="sheet"><div class="brand">PAW PARK · HOJA DE ESTANCIA</div><table>' +
+    '<tr><td colspan="2" class="top">Lomito: <b>' + escHtml(dog.name) + '</b>' + (dog.breed ? ' (' + escHtml(dog.breed) + ')' : '') + '</td></tr>' +
+    '<tr><td colspan="2" class="top">Estancia: <b>' + escHtml(estancia) + '</b></td></tr>' +
     rows +
     '<tr><td colspan="2" class="hdr">Indicaciones comida y medicamentos</td></tr>' +
     '<tr><td colspan="2" class="big">' + escHtml(stay.feeding) + '</td></tr>' +
@@ -859,22 +858,51 @@ function staySheetHtml(dog, stay) {
     '<tr><td class="half">' + escHtml(stay.vetName) + '</td><td class="half">' + escHtml(stay.vetPhone) + '</td></tr>' +
     '<tr><td colspan="2" class="hdr">Contacto emergencia</td></tr>' +
     '<tr><td class="half">' + escHtml(stay.emergencyName) + '</td><td class="half">' + escHtml(stay.emergencyPhone) + '</td></tr>' +
-    '</table></body></html>';
+    '</table></div>';
 }
 
-function printStaySheet(dog, stay) {
+// Dos hojas por página (carta horizontal, cada hoja ocupa media carta).
+function staySheetsHtml(items) {
+  const pages = [];
+  for (let i = 0; i < items.length; i += 2) pages.push(items.slice(i, i + 2));
+  const title = items.length === 1 ? "Hoja de estancia - " + escHtml(items[0].dog.name) : "Hojas de estancia (" + items.length + ")";
+  return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + title + '</title><style>' +
+    '@page{size:letter landscape;margin:8mm}' +
+    '*{box-sizing:border-box}' +
+    'body{margin:0;font-family:"Courier New",Courier,monospace;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    '.page{display:flex;gap:12mm;page-break-after:always;break-after:page}' +
+    '.page:last-child{page-break-after:auto;break-after:auto}' +
+    '.sheet{width:calc(50% - 6mm);flex:none}' +
+    '.brand{font-family:Arial,sans-serif;font-size:8px;letter-spacing:.2em;color:#555;text-align:right;margin-bottom:3px}' +
+    'table{width:100%;border-collapse:collapse;border:2px solid #111}' +
+    'td{border:1.3px solid #111;padding:4px 8px;font-size:12px;vertical-align:middle}' +
+    'td.top{height:34px}' +
+    'td.chk{width:30%;text-align:center}' +
+    'tr.b td{height:30px}' +
+    '.box{display:inline-block;width:15px;height:15px;border:1.6px solid #333;border-radius:2px;line-height:12px;font-size:12px;font-weight:bold;text-align:center}' +
+    'td.hdr{text-align:center;font-size:12.5px;height:24px}' +
+    'td.big{height:300px;vertical-align:top;white-space:pre-wrap;font-size:11px;line-height:1.4}' +
+    'td.half{width:50%;height:28px}' +
+    '</style></head><body>' +
+    pages.map(pg => '<div class="page">' + pg.map(({ dog, stay }) => staySheetBody(dog, stay)).join("") + '</div>').join("") +
+    '</body></html>';
+}
+
+function printStaySheets(items) {
+  if (!items?.length) return;
   const ifr = document.createElement("iframe");
   ifr.setAttribute("aria-hidden", "true");
   ifr.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
   document.body.appendChild(ifr);
   const d = ifr.contentDocument || ifr.contentWindow.document;
-  d.open(); d.write(staySheetHtml(dog, stay)); d.close();
+  d.open(); d.write(staySheetsHtml(items)); d.close();
   setTimeout(() => {
     try { ifr.contentWindow.focus(); ifr.contentWindow.print(); }
     catch (e) { console.error(e); alert("No se pudo abrir la impresión: " + e.message); }
     setTimeout(() => ifr.remove(), 60000);
   }, 300);
 }
+const printStaySheet = (dog, stay) => printStaySheets([{ dog, stay }]);
 
 function PrintStayButton({ dog, stay, small }) {
   return (
@@ -897,18 +925,24 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
   const setBel = (id, k, v) => setStay(s => ({ ...s, belongings: { ...s.belongings, [id]: { ...s.belongings[id], [k]: v } } }));
   const pickDog = d => {
     setDogId(d.id); setQuery("");
-    setStay(s => ({ ...s, feeding: s.feeding || defaultFeedingText(d), vetName: s.vetName || d.emergencyVet || "", vetPhone: s.vetPhone || d.emergencyVetPhone || "", emergencyName: s.emergencyName || d.owner || "", emergencyPhone: s.emergencyPhone || d.phone || "" }));
+    const r = hotelRateFor(d).rate;
+    setStay(s => ({ ...s, nightlyRate: hasRate(s) ? s.nightlyRate : (r != null ? String(r) : ""), feeding: s.feeding || defaultFeedingText(d), vetName: s.vetName || d.emergencyVet || "", vetPhone: s.vetPhone || d.emergencyVetPhone || "", emergencyName: s.emergencyName || d.owner || "", emergencyPhone: s.emergencyPhone || d.phone || "" }));
   };
   const matches = query.trim() ? dogs.filter(d => [d.name, d.owner].some(f => f?.toLowerCase().includes(query.trim().toLowerCase()))).slice(0, 8) : [];
   const nights = stayNights(stay);
+  const eff = withCalcTotal(stay);
+  const rateInfo = dog ? hotelRateFor(dog) : null;
+  const addExtra = (label = "", amount = null) => setStay(s => ({ ...s, extras: [...(s.extras || []), { id: mkId(), label, amount: amount != null ? String(amount) : "" }] }));
+  const setExtra = (id, k, v) => setStay(s => ({ ...s, extras: (s.extras || []).map(e => e.id === id ? { ...e, [k]: v } : e) }));
+  const delExtra = id => setStay(s => ({ ...s, extras: (s.extras || []).filter(e => e.id !== id) }));
   const save = async (andPrint) => {
     if (!dog) { alert("Elige al perrito"); return; }
     if (!stay.checkIn) { alert("Captura la fecha de entrada"); return; }
     if (stay.checkOut && stay.checkOut < stay.checkIn) { alert("La fecha de salida es antes de la entrada"); return; }
     setSaving(true);
-    const ok = await onSave(dog, stay);
+    const ok = await onSave(dog, eff);
     setSaving(false);
-    if (ok && andPrint) printStaySheet(dog, stay);
+    if (ok && andPrint) printStaySheet(dog, eff);
   };
   const box = { background:t.surf2, border:"1px solid " + t.bord, borderRadius:13, padding:"14px 16px", display:"flex", flexDirection:"column", gap:11 };
   const secT = txt => <div style={{ fontSize:11, fontWeight:800, color:t.accD, letterSpacing:"0.07em" }}>{txt}</div>;
@@ -943,17 +977,55 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
         {/* Agenda */}
         <div style={box}>
           {secT("ESTANCIA")}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(115px,1fr))", gap:11 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(135px,1fr))", gap:11 }}>
             <Field dark={dark} label="FECHA ENTRADA" type="date" value={stay.checkIn} onChange={v => set("checkIn", v)} />
             <Field dark={dark} label="FECHA SALIDA" type="date" value={stay.checkOut} onChange={v => set("checkOut", v)} />
             <div><Lbl dark={dark}>NO. NOCHES</Lbl><div style={{ ...inp(dark, true), color:t.text, fontWeight:800 }}>{nights ?? "—"}</div></div>
             <Field dark={dark} label="JAULA" value={stay.cage} onChange={v => set("cage", v)} />
             <Field dark={dark} label="CÁMARA" value={stay.camera} onChange={v => set("camera", v)} />
           </div>
+          {/* Precio */}
+          <div style={{ background:t.surf, border:"1px solid " + t.bord, borderRadius:11, padding:"12px 13px", display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:11, alignItems:"end" }}>
+              <Field dark={dark} label="PRECIO POR NOCHE ($)" value={stay.nightlyRate} onChange={v => set("nightlyRate", v.replace(/[^0-9.]/g, ""))} placeholder="$" />
+              <div style={{ fontSize:11, color:t.text3, lineHeight:1.4, paddingBottom:4 }}>
+                {!dog ? "Elige al perrito para calcular" :
+                  rateInfo?.size ? <>Tamaño <b style={{ color:t.text }}>{rateInfo.size}</b> ({rateInfo.kg} kg){rateInfo.rate != null
+                    ? <> · tarifa {fmtMoney(rateInfo.rate)}{money(stay.nightlyRate) !== rateInfo.rate && <> · <button type="button" onClick={() => set("nightlyRate", String(rateInfo.rate))} style={{ border:"none", background:"none", color:t.acc, fontWeight:800, cursor:"pointer", padding:0, fontSize:11 }}>usar tarifa</button></>}</>
+                    : " · sin tarifa definida, escríbela"}</>
+                  : <>Sin peso registrado: escribe el precio por noche</>}
+              </div>
+            </div>
+            <div>
+              <Lbl dark={dark}>EXTRAS (BAÑO, ETC.)</Lbl>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                {(stay.extras || []).map(e => (
+                  <div key={e.id} style={{ display:"grid", gridTemplateColumns:"1fr 110px 30px", gap:7 }}>
+                    <input value={e.label} onChange={ev => setExtra(e.id, "label", ev.target.value)} placeholder="Concepto" style={{ ...inp(dark, false), padding:"7px 10px" }} />
+                    <input value={e.amount} onChange={ev => setExtra(e.id, "amount", ev.target.value.replace(/[^0-9.]/g, ""))} placeholder="$" style={{ ...inp(dark, false), padding:"7px 10px" }} />
+                    <button type="button" onClick={() => delExtra(e.id)} style={{ border:"1px solid #FECACA", background:"#FEF2F2", color:"#EF4444", borderRadius:8, cursor:"pointer", fontWeight:800 }}>✕</button>
+                  </div>
+                ))}
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {HOTEL_EXTRAS.map(x => <button key={x.label} type="button" onClick={() => addExtra(x.label, x.amount)} style={{ padding:"5px 11px", borderRadius:8, border:"1px dashed " + t.acc, background:t.accBg, color:t.accD, fontSize:12, fontWeight:700, cursor:"pointer" }}>+ {x.label}</button>)}
+                  <button type="button" onClick={() => addExtra("")} style={{ padding:"5px 11px", borderRadius:8, border:"1px dashed " + t.bord, background:"transparent", color:t.text2, fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Otro extra</button>
+                </div>
+              </div>
+            </div>
+            {hasRate(stay) && (
+              <div style={{ fontSize:12, color:t.text2, background:t.surf2, borderRadius:9, padding:"8px 11px", lineHeight:1.5 }}>
+                {(nights ?? 0)} noche{nights === 1 ? "" : "s"} × {fmtMoney(money(stay.nightlyRate))} = <b>{fmtMoney((nights || 0) * money(stay.nightlyRate))}</b>
+                {(stay.extras || []).filter(e => money(e.amount) > 0).map(e => <span key={e.id}> + {e.label || "Extra"} {fmtMoney(money(e.amount))}</span>)}
+                {!nights && <span style={{ color:"#DC2626" }}> · captura la fecha de salida</span>}
+              </div>
+            )}
+          </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:11, alignItems:"end" }}>
-            <Field dark={dark} label="TOTAL ($)" value={stay.total} onChange={v => set("total", v)} placeholder="$" />
+            {hasRate(stay)
+              ? <div><Lbl dark={dark}>TOTAL</Lbl><div style={{ ...inp(dark, true), color:t.text, fontWeight:900, fontSize:15 }}>{fmtMoney(money(eff.total))}</div></div>
+              : <Field dark={dark} label="TOTAL ($)" value={stay.total} onChange={v => set("total", v)} placeholder="$" />}
             <Field dark={dark} label="ABONO ($)" value={stay.deposit} onChange={v => set("deposit", v)} placeholder="$" />
-            <div><Lbl dark={dark}>RESTAN</Lbl><div style={{ ...inp(dark, true), color: stayRemaining(stay) > 0 ? "#DC2626" : "#15803D", fontWeight:800 }}>{fmtMoney(stayRemaining(stay))}</div></div>
+            <div><Lbl dark={dark}>RESTAN</Lbl><div style={{ ...inp(dark, true), color: stayRemaining(eff) > 0 ? "#DC2626" : "#15803D", fontWeight:800 }}>{fmtMoney(stayRemaining(eff))}</div></div>
             <label style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 12px", borderRadius:10, border:"1.5px solid " + (stay.paid ? "#86EFAC" : t.bord), background: stay.paid ? "#F0FDF4" : t.surf, cursor:"pointer", fontWeight:800, fontSize:13, color: stay.paid ? "#15803D" : t.text2 }}>
               <input type="checkbox" checked={!!stay.paid} onChange={e => set("paid", e.target.checked)} style={{ width:17, height:17 }} /> Pagado
             </label>
@@ -1014,6 +1086,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
   const [range, setRange] = useState("upcoming"); // upcoming | past | all
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null); // { dog, stay } | { new:true }
+  const [sel, setSel] = useState({}); // { "dogId|stayId": true }
   const today = todayYMD();
   const all = dogs.flatMap(dog => (dog.hotelStays || []).map(stay => ({ dog, stay })));
   const inHouse = all.filter(({ stay }) => stay.checkIn && stay.checkIn <= today && (!stay.checkOut || stay.checkOut >= today));
@@ -1022,6 +1095,10 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
     .filter(({ dog }) => !q.trim() || [dog.name, dog.owner, dog.breed].some(f => f?.toLowerCase().includes(q.trim().toLowerCase())))
     .sort((a, b) => range === "past" ? (b.stay.checkIn || "").localeCompare(a.stay.checkIn || "") : (a.stay.checkIn || "9").localeCompare(b.stay.checkIn || "9"));
   const pending = list.reduce((n, { stay }) => n + (stay.paid ? 0 : stayRemaining(stay)), 0);
+  const keyOf = (dog, stay) => dog.id + "|" + stay.id;
+  const selected = list.filter(({ dog, stay }) => sel[keyOf(dog, stay)]);
+  const allSel = list.length > 0 && selected.length === list.length;
+  const toggleAll = () => setSel(allSel ? {} : Object.fromEntries(list.map(({ dog, stay }) => [keyOf(dog, stay), true])));
 
   const saveStay = async (dog, stay) => {
     const fresh = dogs.find(d => d.id === dog.id) || dog;
@@ -1045,7 +1122,10 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
           <h2 style={{ margin:0, fontSize:19, color:t.text }}>🏨 Hotel</h2>
           <div style={{ fontSize:12, color:t.text3, marginTop:2 }}>{inHouse.length} hospedado{inHouse.length !== 1 ? "s" : ""} hoy · {list.length} estancia{list.length !== 1 ? "s" : ""} en la lista{pending > 0 ? " · por cobrar " + fmtMoney(pending) : ""}</div>
         </div>
-        <button onClick={() => setEditing({ new:true })} style={{ padding:"9px 18px", borderRadius:11, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:800, cursor:"pointer", fontSize:13 }}>+ Agendar estancia</button>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {selected.length > 0 && <button onClick={() => printStaySheets(selected)} style={{ padding:"9px 16px", borderRadius:11, border:"1.5px solid #143B31", background:"#E8F0DC", color:"#143B31", fontWeight:800, cursor:"pointer", fontSize:13 }}>🖨 Imprimir {selected.length} hoja{selected.length !== 1 ? "s" : ""} ({Math.ceil(selected.length / 2)} pág.)</button>}
+          <button onClick={() => setEditing({ new:true })} style={{ padding:"9px 18px", borderRadius:11, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:800, cursor:"pointer", fontSize:13 }}>+ Agendar estancia</button>
+        </div>
       </div>
       <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
         {[["upcoming","Actuales y próximas"],["past","Pasadas"],["all","Todas"]].map(([k,l]) => <button key={k} onClick={() => setRange(k)} style={{ padding:"5px 13px", borderRadius:99, border:"1.5px solid " + (range===k ? t.acc : t.bord), background: range===k ? t.accBg : t.surf, color: range===k ? t.accD : t.text2, fontWeight:700, fontSize:12, cursor:"pointer" }}>{l}</button>)}
@@ -1058,14 +1138,15 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
         </Card>
       ) : (
         <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch", borderRadius:14, border:"1px solid " + t.bord, background:t.surf }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", minWidth:1100 }}>
-            <thead><tr>{["Fecha entrada","Fecha salida","Noches","Raza","Lomito","Total","Abono","Restan","Pagado","Jaula","Cámara","Notas",""].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+          <table style={{ width:"100%", borderCollapse:"collapse", minWidth:1140 }}>
+            <thead><tr><th style={th} title="Seleccionar para imprimir"><input type="checkbox" checked={allSel} onChange={toggleAll} style={{ width:16, height:16, cursor:"pointer" }} /></th>{["Fecha entrada","Fecha salida","Noches","Raza","Lomito","Total","Abono","Restan","Pagado","Jaula","Cámara","Notas",""].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>
               {list.map(({ dog, stay }) => {
                 const here = stay.checkIn && stay.checkIn <= today && (!stay.checkOut || stay.checkOut >= today);
                 const rest = stayRemaining(stay);
                 return (
                   <tr key={dog.id + stay.id} onClick={() => setEditing({ dog, stay })} style={{ cursor:"pointer", background: here ? (dark ? "#14301F" : "#E8F3DC") : "transparent" }}>
+                    <td style={td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={!!sel[keyOf(dog, stay)]} onChange={e => setSel(m => ({ ...m, [keyOf(dog, stay)]: e.target.checked }))} style={{ width:16, height:16, cursor:"pointer" }} /></td>
                     <td style={td}>{fmtDMY(stay.checkIn) || "—"}</td>
                     <td style={td}>{fmtDMY(stay.checkOut) || "—"}</td>
                     <td style={td}>{stayNights(stay) ?? "—"}</td>
