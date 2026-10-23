@@ -712,7 +712,7 @@ function StayCard({ stay, dog, onDelete, onChange, currentUser, readOnly, dark }
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
           <span style={{ fontSize:20 }}>🏨</span>
           <div>
-            <div style={{ color:"white", fontWeight:800, fontSize:15 }}>{dog.name}</div>
+            <div style={{ color:"white", fontWeight:800, fontSize:15 }}>{dog.name}{stay.cancelled && <span style={{ marginLeft:8, background:"#DC2626", color:"white", borderRadius:99, padding:"1px 8px", fontSize:10, fontWeight:800 }}>CANCELADA</span>}</div>
             <div style={{ color:"#AACC71", fontSize:12 }}>{stay.checkIn && stay.checkOut ? fmtDMY(stay.checkIn) + " al " + fmtDMY(stay.checkOut) : fmtDMY(stay.checkIn || stay.checkOut) || "Fechas pendientes"}{stayNights(stay) != null ? " · " + stayNights(stay) + " noche" + (stayNights(stay) !== 1 ? "s" : "") : ""}{stay.cage ? " · " + roomLabel(stay.cage) : ""}</div>
           </div>
         </div>
@@ -943,7 +943,7 @@ const stayEnd = s => s.checkOut && s.checkOut > s.checkIn ? s.checkOut : s.check
 const staysOverlap = (a, b) => !!(a.checkIn && b.checkIn) && a.checkIn < stayEnd(b) && b.checkIn < stayEnd(a);
 // Estancias que ocupan la jaula en esas fechas (sin contar la estancia que se está editando).
 function roomOccupants(all, roomId, range, excludeId) {
-  return all.filter(({ stay }) => stay.id !== excludeId && roomOf(stay.cage)?.id === roomId && staysOverlap(stay, range));
+  return all.filter(({ stay }) => stay.id !== excludeId && !stay.cancelled && roomOf(stay.cage)?.id === roomId && staysOverlap(stay, range));
 }
 function freeRooms(all, range, excludeId) {
   return HOTEL_ROOMS.filter(r => !r.special && roomOccupants(all, r.id, range, excludeId).length === 0);
@@ -962,9 +962,9 @@ function suggestRoom(all, range, dog, wantsCamera, excludeId) {
 const fmtShortDate = ds => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ds || ""); return m ? (+m[3]) + " " + MONTHS_ES[+m[2] - 1].slice(0, 3).toLowerCase() : ""; };
 // Quién está en cada jaula un día (incluye a los que salen o llegan ese día).
 function roomsOnDay(all, day) {
-  return HOTEL_ROOMS.map(r => ({ room:r, occ: all.filter(({ stay }) => roomOf(stay.cage)?.id === r.id && stay.checkIn && stay.checkIn <= day && (!stay.checkOut || stay.checkOut >= day)).sort((a, b) => (a.stay.checkIn || "").localeCompare(b.stay.checkIn || "")) }));
+  return HOTEL_ROOMS.map(r => ({ room:r, occ: all.filter(({ stay }) => !stay.cancelled && roomOf(stay.cage)?.id === r.id && stay.checkIn && stay.checkIn <= day && (!stay.checkOut || stay.checkOut >= day)).sort((a, b) => (a.stay.checkIn || "").localeCompare(b.stay.checkIn || "")) }));
 }
-const unassignedOnDay = (all, day) => all.filter(({ stay }) => !roomOf(stay.cage) && stay.checkIn && stay.checkIn <= day && (!stay.checkOut || stay.checkOut >= day));
+const unassignedOnDay = (all, day) => all.filter(({ stay }) => !stay.cancelled && !roomOf(stay.cage) && stay.checkIn && stay.checkIn <= day && (!stay.checkOut || stay.checkOut >= day));
 
 function acomodoHtml(all, day) {
   const rows = roomsOnDay(all, day);
@@ -1271,6 +1271,9 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
               <input type="checkbox" checked={!!stay.paid} onChange={e => set("paid", e.target.checked)} style={{ width:17, height:17 }} /> Pagado
             </label>
           </div>
+          {!isNew && <label style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 12px", borderRadius:10, border:"1.5px solid " + (stay.cancelled ? "#FCA5A5" : t.bord), background: stay.cancelled ? "#FEF2F2" : t.surf, cursor:"pointer", fontWeight:800, fontSize:13, color: stay.cancelled ? "#B91C1C" : t.text2 }}>
+            <input type="checkbox" checked={!!stay.cancelled} onChange={e => setStay(s => ({ ...s, cancelled: e.target.checked, cancelledAt: e.target.checked ? todayYMD() : "" }))} style={{ width:17, height:17 }} /> Reservación cancelada <span style={{ fontWeight:500, fontSize:11, color:t.text3 }}>(libera la jaula y no cuenta en totales)</span>
+          </label>}
           <TA dark={dark} label="NOTAS" value={stay.notes} onChange={v => set("notes", v)} rows={2} placeholder="Ej. Con baño, se van el viernes entre 5 y 6 pm" />
         </div>
 
@@ -1545,7 +1548,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
   const [sel, setSel] = useState({}); // { "dogId|stayId": true }
   const today = todayYMD();
   const all = dogs.flatMap(dog => (dog.hotelStays || []).map(stay => ({ dog, stay })));
-  const inHouse = all.filter(({ stay }) => stay.checkIn && stay.checkIn <= today && (!stay.checkOut || stay.checkOut >= today));
+  const inHouse = all.filter(({ stay }) => !stay.cancelled && stay.checkIn && stay.checkIn <= today && (!stay.checkOut || stay.checkOut >= today));
   // Pestañas por mes: cada estancia va en el mes de su fecha de entrada. Siempre se muestra el mes actual y el siguiente.
   const curMonth = today.slice(0, 7);
   const nextMonth = (() => { const [y, m] = curMonth.split("-").map(Number); return m === 12 ? (y + 1) + "-01" : y + "-" + String(m + 1).padStart(2, "0"); })();
@@ -1556,9 +1559,15 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
     .filter(({ stay }) => month === "all" || (stay.checkIn || "").startsWith(month))
     .filter(({ dog }) => !q.trim() || [dog.name, dog.owner, dog.breed].some(f => f?.toLowerCase().includes(q.trim().toLowerCase())))
     .sort((a, b) => (a.stay.checkIn || "9").localeCompare(b.stay.checkIn || "9"));
-  const monthNights = list.reduce((n, { stay }) => n + (stayNights(stay) || 0), 0);
-  const monthTotal = list.reduce((n, { stay }) => n + money(stay.total), 0);
-  const pending = list.reduce((n, { stay }) => n + (stay.paid ? 0 : stayRemaining(stay)), 0);
+  const active = list.filter(({ stay }) => !stay.cancelled);
+  const cancelledN = list.length - active.length;
+  const monthNights = active.reduce((n, { stay }) => n + (stayNights(stay) || 0), 0);
+  const monthTotal = active.reduce((n, { stay }) => n + money(stay.total), 0);
+  const pending = active.reduce((n, { stay }) => n + (stay.paid ? 0 : stayRemaining(stay)), 0);
+  const toggleCancel = (dog, stay) => {
+    if (!stay.cancelled && !confirm("¿Marcar como CANCELADA la reservación de " + dog.name + "?")) return;
+    saveStay(dog, { ...stay, cancelled: !stay.cancelled, cancelledAt: !stay.cancelled ? todayYMD() : "" });
+  };
   const keyOf = (dog, stay) => dog.id + "|" + stay.id;
   const selected = list.filter(({ dog, stay }) => sel[keyOf(dog, stay)]);
   const allSel = list.length > 0 && selected.length === list.length;
@@ -1606,12 +1615,16 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
       </div>
       <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
         <div style={{ display:"flex", gap:14, flexWrap:"wrap", fontSize:12, color:t.text2 }}>
-          <span><b style={{ color:t.text }}>{list.length}</b> estancia{list.length !== 1 ? "s" : ""}</span>
+          <span><b style={{ color:t.text }}>{active.length}</b> estancia{active.length !== 1 ? "s" : ""}</span>
+          {cancelledN > 0 && <span><b style={{ color:"#DC2626" }}>{cancelledN}</b> cancelada{cancelledN !== 1 ? "s" : ""}</span>}
           <span><b style={{ color:t.text }}>{monthNights}</b> noche{monthNights !== 1 ? "s" : ""}</span>
           <span>Total <b style={{ color:t.text }}>{fmtMoney(monthTotal)}</b></span>
           {pending > 0 && <span>Por cobrar <b style={{ color:"#DC2626" }}>{fmtMoney(pending)}</b></span>}
         </div>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar perrito o tutor..." style={{ marginLeft:"auto", padding:"7px 13px", borderRadius:10, border:"1.5px solid " + t.bord, fontSize:13, background:t.surf, color:t.text, outline:"none", width:220, maxWidth:"100%" }} />
+      </div>
+      <div style={{ display:"flex", gap:12, flexWrap:"wrap", fontSize:11, color:t.text3 }}>
+        {[["#DBEAFE","Hospedado hoy"],["#BBF7D0","Ya se fue"],["#FFEDD5","Sin expediente"],["#FECACA","Cancelada"]].map(([c,l]) => <span key={l} style={{ display:"inline-flex", alignItems:"center", gap:5 }}><span style={{ width:12, height:12, borderRadius:3, background:c, border:"1px solid #0001" }} />{l}</span>)}
       </div>
       {list.length === 0 ? (
         <Card dark={dark} style={{ textAlign:"center", padding:"40px 0" }}>
@@ -1624,16 +1637,17 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
             <thead><tr><th style={th} title="Seleccionar para imprimir"><input type="checkbox" checked={allSel} onChange={toggleAll} style={{ width:16, height:16, cursor:"pointer" }} /></th>{["Fecha entrada","Fecha salida","Noches","Raza","Lomito","Total","Abono","Restan","Pagado","Jaula","Cámara","Notas",""].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>
               {list.map(({ dog, stay }) => {
-                const here = stay.checkIn && stay.checkIn <= today && (!stay.checkOut || stay.checkOut >= today);
+                const here = !stay.cancelled && stay.checkIn && stay.checkIn <= today && (!stay.checkOut || stay.checkOut >= today);
+                const gone = !stay.cancelled && stay.checkOut && stay.checkOut < today;
                 const rest = stayRemaining(stay);
                 return (
-                  <tr key={dog.id + stay.id} onClick={() => setEditing({ dog, stay })} style={{ cursor:"pointer", background: dog.noExpediente ? (dark ? "#3A2410" : "#FFEDD5") : here ? (dark ? "#14301F" : "#E8F3DC") : "transparent" }}>
+                  <tr key={dog.id + stay.id} onClick={() => setEditing({ dog, stay })} style={{ cursor:"pointer", background: stay.cancelled ? (dark ? "#3B1111" : "#FECACA") : gone ? (dark ? "#14391F" : "#BBF7D0") : dog.noExpediente ? (dark ? "#3A2410" : "#FFEDD5") : here ? (dark ? "#132A44" : "#DBEAFE") : "transparent", textDecoration: stay.cancelled ? "line-through" : "none", opacity: stay.cancelled ? 0.85 : 1 }}>
                     <td style={td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={!!sel[keyOf(dog, stay)]} onChange={e => setSel(m => ({ ...m, [keyOf(dog, stay)]: e.target.checked }))} style={{ width:16, height:16, cursor:"pointer" }} /></td>
                     <td style={td}>{fmtDMY(stay.checkIn) || "—"}</td>
                     <td style={td}>{fmtDMY(stay.checkOut) || "—"}</td>
                     <td style={td}>{stayNights(stay) ?? "—"}</td>
                     <td style={td}>{dog.breed || "—"}</td>
-                    <td style={{ ...td, textAlign:"left" }}><div style={{ display:"flex", alignItems:"center", gap:8 }}><DogAvatar dog={dog} size={28} /><span style={{ fontWeight:800 }}>{dog.name}</span>{dog.noExpediente && <span style={{ background:"#F97316", color:"white", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800 }}>SIN EXPEDIENTE</span>}{here && <span style={{ background:"#143B31", color:"#AACC71", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800 }}>HOSPEDADO</span>}</div></td>
+                    <td style={{ ...td, textAlign:"left" }}><div style={{ display:"flex", alignItems:"center", gap:8 }}><DogAvatar dog={dog} size={28} /><span style={{ fontWeight:800 }}>{dog.name}</span>{dog.noExpediente && <span style={{ background:"#F97316", color:"white", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800 }}>SIN EXPEDIENTE</span>}{here && <span style={{ background:"#1D4ED8", color:"white", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800 }}>HOSPEDADO</span>}{gone && <span style={{ background:"#15803D", color:"white", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800 }}>YA SE FUE</span>}{stay.cancelled && <span style={{ display:"inline-block", textDecoration:"none", background:"#DC2626", color:"white", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800 }}>CANCELADA</span>}</div></td>
                     <td style={td}>{stay.total ? fmtMoney(money(stay.total)) : "—"}</td>
                     <td style={td}>{stay.deposit ? fmtMoney(money(stay.deposit)) : ""}</td>
                     <td style={{ ...td, fontWeight:800, color: stay.paid || rest === 0 ? "#15803D" : "#DC2626" }}>{stay.total ? fmtMoney(rest) : "—"}</td>
@@ -1645,6 +1659,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
                       <div style={{ display:"flex", gap:5, justifyContent:"flex-end" }}>
                         <PrintStayButton dog={dog} stay={stay} small />
                         {onOpenDog && <button onClick={() => onOpenDog(dog)} title="Abrir expediente" style={{ padding:"4px 8px", borderRadius:8, border:"1px solid " + t.bord, background:t.surf2, color:t.text2, fontSize:11, fontWeight:700, cursor:"pointer" }}>📁</button>}
+                        <button onClick={() => toggleCancel(dog, stay)} title={stay.cancelled ? "Reactivar reservación" : "Marcar como cancelada"} style={{ padding:"4px 8px", borderRadius:8, border:"1px solid " + (stay.cancelled ? "#86EFAC" : "#FCA5A5"), background: stay.cancelled ? "#F0FDF4" : "#FFF1F2", color: stay.cancelled ? "#15803D" : "#B91C1C", fontSize:11, fontWeight:700, cursor:"pointer", textDecoration:"none" }}>{stay.cancelled ? "↺ Reactivar" : "Cancelar"}</button>
                         <button onClick={() => deleteStay(dog, stay)} title="Eliminar" style={{ padding:"4px 8px", borderRadius:8, border:"1px solid #FECACA", background:"#FEF2F2", color:"#EF4444", fontSize:11, fontWeight:700, cursor:"pointer" }}>✕</button>
                       </div>
                     </td>
