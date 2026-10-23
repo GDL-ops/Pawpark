@@ -1599,6 +1599,11 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
   const [month, setMonth] = useState(() => todayYMD().slice(0, 7)); // "2026-10" o "all"
   const [mode, setMode] = useState("agenda"); // agenda | acomodo
   const [showImport, setShowImport] = useState(false);
+  // Tamaño de la vista de Hotel (para ver toda la tabla); se recuerda en este navegador.
+  const ZOOMS = [1, 0.9, 0.8, 0.7, 0.6, 0.5];
+  const [zoom, setZoomState] = useState(() => { try { const z = parseFloat(localStorage.getItem("pp_hotel_zoom")); return ZOOMS.includes(z) ? z : 1; } catch { return 1; } });
+  const setZoom = z => { setZoomState(z); try { localStorage.setItem("pp_hotel_zoom", String(z)); } catch {} };
+  const zi = ZOOMS.indexOf(zoom);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null); // { dog, stay } | { new:true }
   const [sel, setSel] = useState({}); // { "dogId|stayId": true }
@@ -1664,12 +1669,18 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
         <div style={{ display:"flex", background:t.surf2, borderRadius:11, padding:3, border:"1px solid " + t.bord }}>
           {[["agenda","📋 Agenda"],["acomodo","🗂 Acomodo y disponibilidad"]].map(([k,l]) => <button key={k} onClick={() => setMode(k)} style={{ padding:"7px 13px", borderRadius:9, border:"none", background: mode===k ? t.surf : "transparent", boxShadow: mode===k ? "0 1px 4px #0002" : "none", color: mode===k ? t.text : t.text3, fontWeight:800, fontSize:12, cursor:"pointer" }}>{l}</button>)}
         </div>
+        <div style={{ display:"flex", alignItems:"center", gap:2, background:t.surf2, borderRadius:11, padding:3, border:"1px solid " + t.bord }} title="Tamaño de la vista">
+          <button onClick={() => zi < ZOOMS.length - 1 && setZoom(ZOOMS[zi + 1])} disabled={zi === ZOOMS.length - 1} style={{ width:30, height:28, borderRadius:8, border:"none", background:t.surf, color:t.text, fontWeight:900, fontSize:16, cursor:"pointer", opacity: zi === ZOOMS.length - 1 ? 0.4 : 1 }}>−</button>
+          <button onClick={() => setZoom(1)} style={{ minWidth:48, height:28, border:"none", background:"transparent", color:t.text2, fontWeight:800, fontSize:12, cursor:"pointer" }} title="Volver al 100%">{Math.round(zoom * 100)}%</button>
+          <button onClick={() => zi > 0 && setZoom(ZOOMS[zi - 1])} disabled={zi === 0} style={{ width:30, height:28, borderRadius:8, border:"none", background:t.surf, color:t.text, fontWeight:900, fontSize:16, cursor:"pointer", opacity: zi === 0 ? 0.4 : 1 }}>+</button>
+        </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {selected.length > 0 && <button onClick={() => printStaySheets(selected)} style={{ padding:"9px 16px", borderRadius:11, border:"1.5px solid #143B31", background:"#E8F0DC", color:"#143B31", fontWeight:800, cursor:"pointer", fontSize:13 }}>🖨 Imprimir {selected.length} hoja{selected.length !== 1 ? "s" : ""} ({Math.ceil(selected.length / 2)} pág.)</button>}
           <button onClick={() => setShowImport(true)} style={{ padding:"9px 14px", borderRadius:11, border:"1.5px solid " + t.bord, background:t.surf, color:t.text2, fontWeight:800, cursor:"pointer", fontSize:13 }}>📥 Importar Excel</button>
           <button onClick={() => setEditing({ new:true })} style={{ padding:"9px 18px", borderRadius:11, border:"none", background:"linear-gradient(135deg,#143B31,#AACC71)", color:"white", fontWeight:800, cursor:"pointer", fontSize:13 }}>+ Agendar estancia</button>
         </div>
       </div>
+      <div style={{ zoom, display:"flex", flexDirection:"column", gap:14 }}>
       {mode === "acomodo" ? <AcomodoView dark={dark} all={all} onEdit={(dog, stay) => setEditing({ dog, stay })} /> : <>
       <div style={{ display:"flex", gap:4, overflowX:"auto", WebkitOverflowScrolling:"touch", borderBottom:"2px solid " + t.bord, paddingBottom:0 }}>
         {[...months, "all"].map(ym => { const on = month === ym; const n = ym === "all" ? all.length : countIn(ym); return (
@@ -1738,6 +1749,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
         </div>
       )}
       </>}
+      </div>
       {showImport && <HotelImportModal dark={dark} dogs={dogs} onClose={() => setShowImport(false)} />}
       {editing && <HotelStayForm dark={dark} dogs={dogs} initialDog={editing.dog} initialStay={editing.stay} onSave={saveStay} onCancel={() => setEditing(null)} />}
     </div>
@@ -3152,7 +3164,7 @@ export default function PawPark() {
 
       {showUM && <UserMgr dark={dark} users={users} onSave={saveUsers} onClose={() => setShowUM(false)} />}
 
-      <main style={{ flex:1, padding:"20px 22px", maxWidth:1200, margin:"0 auto", width:"100%", boxSizing:"border-box" }}>
+      <main style={{ flex:1, padding:"20px 22px", maxWidth: view === "hotel" ? "none" : 1200, margin:"0 auto", width:"100%", boxSizing:"border-box" }}>
 
         {/* Dashboard */}
         {view === "dashboard" && (
