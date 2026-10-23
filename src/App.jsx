@@ -1624,7 +1624,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar perrito o tutor..." style={{ marginLeft:"auto", padding:"7px 13px", borderRadius:10, border:"1.5px solid " + t.bord, fontSize:13, background:t.surf, color:t.text, outline:"none", width:220, maxWidth:"100%" }} />
       </div>
       <div style={{ display:"flex", gap:12, flexWrap:"wrap", fontSize:11, color:t.text3 }}>
-        {[["#DBEAFE","Hospedado hoy"],["#BBF7D0","Ya se fue"],["#FFEDD5","Sin expediente"],["#FECACA","Cancelada"]].map(([c,l]) => <span key={l} style={{ display:"inline-flex", alignItems:"center", gap:5 }}><span style={{ width:12, height:12, borderRadius:3, background:c, border:"1px solid #0001" }} />{l}</span>)}
+        {[["#DBEAFE","Hospedado hoy"],["#BBF7D0","Ya se fue"],["#FECACA","Cancelada"]].map(([c,l]) => <span key={l} style={{ display:"inline-flex", alignItems:"center", gap:5 }}><span style={{ width:12, height:12, borderRadius:3, background:c, border:"1px solid #0001" }} />{l}</span>)}
       </div>
       {list.length === 0 ? (
         <Card dark={dark} style={{ textAlign:"center", padding:"40px 0" }}>
@@ -1641,7 +1641,7 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
                 const gone = !stay.cancelled && stay.checkOut && stay.checkOut < today;
                 const rest = stayRemaining(stay);
                 return (
-                  <tr key={dog.id + stay.id} onClick={() => setEditing({ dog, stay })} style={{ cursor:"pointer", background: stay.cancelled ? (dark ? "#3B1111" : "#FECACA") : gone ? (dark ? "#14391F" : "#BBF7D0") : dog.noExpediente ? (dark ? "#3A2410" : "#FFEDD5") : here ? (dark ? "#132A44" : "#DBEAFE") : "transparent", textDecoration: stay.cancelled ? "line-through" : "none", opacity: stay.cancelled ? 0.85 : 1 }}>
+                  <tr key={dog.id + stay.id} onClick={() => setEditing({ dog, stay })} style={{ cursor:"pointer", background: stay.cancelled ? (dark ? "#3B1111" : "#FECACA") : gone ? (dark ? "#14391F" : "#BBF7D0") : here ? (dark ? "#132A44" : "#DBEAFE") : "transparent", textDecoration: stay.cancelled ? "line-through" : "none", opacity: stay.cancelled ? 0.85 : 1 }}>
                     <td style={td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={!!sel[keyOf(dog, stay)]} onChange={e => setSel(m => ({ ...m, [keyOf(dog, stay)]: e.target.checked }))} style={{ width:16, height:16, cursor:"pointer" }} /></td>
                     <td style={td}>{fmtDMY(stay.checkIn) || "—"}</td>
                     <td style={td}>{fmtDMY(stay.checkOut) || "—"}</td>
