@@ -976,11 +976,11 @@ const unassignedOnDay = (all, day) => all.filter(({ stay }) => !stay.cancelled &
 function acomodoHtml(all, day) {
   const rows = roomsOnDay(all, day);
   const dateTitle = (() => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day); return m ? (+m[3]) + " de " + MONTHS_ES[+m[2] - 1].toLowerCase() + " " + m[1] : day; })();
-  const who = occ => occ.map(({ dog, stay }) => {
-    const tag = stay.checkOut === day ? " (sale hoy)" : stay.checkIn === day ? " (llega hoy)" : "";
-    return '<b>' + escHtml(dog.name) + '</b>' + (dog.noExpediente ? ' <span class="sm">[sin expediente]</span>' : '') + (dog.breed ? ' <span class="sm">' + escHtml(dog.breed) + '</span>' : '') + '<span class="sm">' + tag + '</span>';
-  }).join("<br>");
-  const salida = occ => occ.map(({ stay }) => fmtShortDate(stay.checkOut)).filter(Boolean).join("<br>");
+  // Nombre grande en negritas + raza; si comparten jaula: "Bruno border collie - Taquito pug".
+  const who = occ => occ.map(({ dog }) =>
+    '<span class="n">' + escHtml(dog.name) + '</span>' + (dog.breed ? ' <span class="br">' + escHtml(dog.breed.toLowerCase()) + '</span>' : '')
+  ).join('<span class="sep"> - </span>');
+  const salida = occ => [...new Set(occ.map(({ stay }) => fmtShortDate(stay.checkOut)).filter(Boolean))].join(" / ");
   const body = rows.map(({ room, occ }) =>
     (room.id === String(UPPER_FROM) ? '<tr><td colspan="4" class="sec">ARRIBA (jaulas ' + UPPER_FROM + '–28)</td></tr>' : '') +
     (room.id === "vet" ? '<tr><td colspan="4" class="sec">OTROS</td></tr>' : '') +
@@ -993,9 +993,10 @@ function acomodoHtml(all, day) {
     'body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     'h1{font-size:16px;margin:0 0 2px}.sub{font-size:11px;color:#444;margin-bottom:6px}' +
     'table{width:100%;border-collapse:collapse}th{background:#eee;font-size:12px;padding:4px 6px;border:1px solid #111}' +
-    'td{border:1px solid #111;padding:2px 6px;font-size:13px;height:25px;vertical-align:middle}' +
-    'td.c{text-align:center}td.dog{width:42%}td.cam{font-weight:bold}tr.occ td.dog{background:#F3F9EC}' +
+    'td{border:1px solid #111;padding:2px 7px;font-size:13px;height:30px;vertical-align:middle}' +
+    'td.c{text-align:center}td.dog{width:52%}td.cam{font-weight:bold}tr.occ td.dog{background:#F3F9EC}' +
     'td.sec{background:#ddd;font-weight:bold;font-size:10px;letter-spacing:.08em;text-align:center;height:16px;padding:1px}' +
+    '.n{font-size:22px;font-weight:900;line-height:1.1}.br{font-size:12px;color:#333}.sep{font-size:20px;font-weight:900}' +
     '.sm{font-size:10px;color:#444}.warn{margin-top:6px;font-size:11px;color:#B91C1C}' +
     '</style></head><body>' +
     '<h1>PAW PARK · Acomodo de hotel</h1><div class="sub">' + escHtml(dateTitle) + ' · ' + total + ' perrito' + (total !== 1 ? 's' : '') + ' hospedado' + (total !== 1 ? 's' : '') + '</div>' +
