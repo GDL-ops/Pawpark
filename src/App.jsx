@@ -1171,7 +1171,7 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
   const [query, setQuery] = useState("");
   const [stay, setStay] = useState(() => initialStay ? { ...newHotelStay(null), ...initialStay, belongings: { ...newHotelStay(null).belongings, ...(initialStay.belongings || {}) } } : newHotelStay(initialDog));
   const [saving, setSaving] = useState(false);
-  const dog = dogs.find(d => d.id === dogId) || initialDog || null;
+  const dog = dogId ? (dogs.find(d => d.id === dogId) || (initialDog?.id === dogId ? initialDog : null)) : null;
   const isNew = !initialStay;
   const set = (k, v) => setStay(s => ({ ...s, [k]: v }));
   const setBel = (id, k, v) => setStay(s => ({ ...s, belongings: { ...s.belongings, [id]: { ...s.belongings[id], [k]: v } } }));
@@ -1179,7 +1179,7 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
     setDogId(d.id); setQuery("");
     setStay(s => { const r = hotelRateFor(d, stayNights(s)).rate; return { ...s, nightlyRate: (s.rateAuto !== false || !hasRate(s)) && r != null ? String(r) : s.nightlyRate, rateAuto: r != null ? (s.rateAuto !== false || !hasRate(s)) : false, feeding: s.feeding || defaultFeedingText(d), vetName: s.vetName || d.emergencyVet || "", vetPhone: s.vetPhone || d.emergencyVetPhone || "", emergencyName: s.emergencyName || d.owner || "", emergencyPhone: s.emergencyPhone || d.phone || "" }; });
   };
-  const matches = query.trim() ? dogs.filter(d => [d.name, d.owner].some(f => f?.toLowerCase().includes(query.trim().toLowerCase()))).slice(0, 8) : [];
+  const matches = query.trim() ? dogs.filter(d => [d.name, d.owner, d.breed].some(f => normTxt(f).includes(normTxt(query)))).sort((a, b) => (a.noExpediente ? 1 : 0) - (b.noExpediente ? 1 : 0)).slice(0, 10) : [];
   const nights = stayNights(stay);
   const eff = withCalcTotal(stay);
   const rateInfo = dog ? hotelRateFor(dog, nights) : null;
@@ -1199,7 +1199,7 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
     const clash = cageClash(allStays, stay);
     if (clash.length && !confirm(roomLabel(r.id) + " ya está ocupada por " + clash.map(o => o.dog.name).join(", ") + " en esas fechas. ¿Guardar de todos modos?")) return;
     setSaving(true);
-    const ok = await onSave(dog, eff);
+    const ok = await onSave(dog, eff, initialDog && initialDog.id !== dog.id ? initialDog : null);
     setSaving(false);
     if (ok && andPrint) printStaySheet(dog, eff);
   };
@@ -1220,15 +1220,16 @@ function HotelStayForm({ dogs, initialDog, initialStay, onSave, onCancel, dark }
             <div style={{ display:"flex", alignItems:"center", gap:11 }}>
               <DogAvatar dog={dog} size={42} />
               <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}{dog.noExpediente && <span style={{ marginLeft:7, background:"#F97316", color:"white", borderRadius:99, padding:"1px 8px", fontSize:10, fontWeight:800 }}>SIN EXPEDIENTE</span>}</div><div style={{ fontSize:12, color:t.text2 }}>{[dog.breed, dog.owner].filter(Boolean).join(" · ")}</div></div>
-              {isNew && !initialDog && <button onClick={() => setDogId("")} style={{ padding:"5px 11px", borderRadius:8, border:"1px solid " + t.bord, background:t.surf, color:t.text2, fontSize:12, fontWeight:700, cursor:"pointer" }}>Cambiar</button>}
+              <button onClick={() => { setDogId(""); setQuery(dog.noExpediente ? dog.name : ""); }} style={{ padding:"5px 11px", borderRadius:8, border:"1px solid " + (dog.noExpediente ? "#F97316" : t.bord), background: dog.noExpediente ? "#FFF7ED" : t.surf, color: dog.noExpediente ? "#C2410C" : t.text2, fontSize:12, fontWeight:700, cursor:"pointer" }}>{dog.noExpediente ? "🔍 Buscar su expediente" : "🔍 Cambiar"}</button>
             </div>
           ) : (
             <div style={{ position:"relative" }}>
               <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Busca el nombre del perrito o del tutor..." style={inp(dark, false)} />
               {matches.length > 0 && <div style={{ position:"absolute", top:"100%", left:0, right:0, marginTop:4, background:t.surf, border:"1px solid " + t.bord, borderRadius:12, overflow:"hidden", zIndex:10, boxShadow:"0 8px 24px #0002" }}>
-                {matches.map(d => <div key={d.id} onClick={() => pickDog(d)} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 13px", cursor:"pointer", borderBottom:"1px solid " + t.bord }}><DogAvatar dog={d} size={30} /><div><div style={{ fontWeight:700, fontSize:13, color:t.text }}>{d.name}</div><div style={{ fontSize:11, color:t.text2 }}>{[d.breed, d.owner].filter(Boolean).join(" · ")}</div></div></div>)}
+                {matches.map(d => <div key={d.id} onClick={() => pickDog(d)} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 13px", cursor:"pointer", borderBottom:"1px solid " + t.bord }}><DogAvatar dog={d} size={30} /><div><div style={{ fontWeight:700, fontSize:13, color:t.text }}>{d.name}{d.noExpediente && <span style={{ marginLeft:6, fontSize:9, fontWeight:800, color:"#C2410C" }}>SIN EXPEDIENTE</span>}</div><div style={{ fontSize:11, color:t.text2 }}>{[d.breed, d.owner].filter(Boolean).join(" · ")}</div></div></div>)}
               </div>}
               {query.trim() && matches.length === 0 && <div style={{ fontSize:12, color:t.text3, marginTop:6 }}>Sin resultados. El perrito debe tener expediente.</div>}
+              {initialDog && <button onClick={() => { setDogId(initialDog.id); setQuery(""); }} style={{ marginTop:6, padding:"3px 9px", borderRadius:7, border:"1px solid " + t.bord, background:t.surf, color:t.text3, fontSize:11, fontWeight:700, cursor:"pointer" }}>← Dejar en {initialDog.name}</button>}
             </div>
           )}
         </div>
@@ -1443,6 +1444,47 @@ function rowToStay(r, dog) {
   };
 }
 
+// Buscador de expedientes (nombre, tutor o raza). Los "sin expediente" aparecen al final.
+function DogSearchPick({ dogs, value, onChange, dark, allowNew, newLabel = "SIN EXPEDIENTE (agregar)", suggestions = [] }) {
+  const t = getT(dark);
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const cur = value === "new" ? null : dogs.find(d => d.id === value);
+  const qq = normTxt(q);
+  const list = (qq ? dogs.filter(d => [d.name, d.owner, d.breed].some(f => normTxt(f).includes(qq))) : suggestions)
+    .slice().sort((a, b) => (a.noExpediente ? 1 : 0) - (b.noExpediente ? 1 : 0) || (a.name || "").localeCompare(b.name || "")).slice(0, 12);
+  const pick = id => { onChange(id); setOpen(false); setQ(""); };
+  return (
+    <div style={{ position:"relative", minWidth:220 }}>
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} style={{ width:"100%", textAlign:"left", padding:"6px 10px", borderRadius:8, border:"1.5px solid " + (cur ? t.bord : "#F97316"), background:t.surf, color: cur ? t.text : "#C2410C", fontSize:12, fontWeight:700, cursor:"pointer", display:"flex", justifyContent:"space-between", gap:8 }}>
+          <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cur ? cur.name + (cur.breed ? " · " + cur.breed : "") + (cur.owner ? " · " + cur.owner : "") + (cur.noExpediente ? " (sin expediente)" : "") : newLabel}</span>
+          <span style={{ color:t.text3 }}>🔍</span>
+        </button>
+      ) : (
+        <>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Escape" && setOpen(false)} placeholder="Busca nombre, tutor o raza..." style={{ ...inp(dark, false), padding:"6px 10px", fontSize:12 }} />
+          <div style={{ position:"absolute", top:"100%", left:0, right:0, minWidth:260, marginTop:3, background:t.surf, border:"1px solid " + t.bord, borderRadius:10, zIndex:20, boxShadow:"0 8px 24px #0003", maxHeight:280, overflowY:"auto" }}>
+            {list.map(d => (
+              <div key={d.id} onClick={() => pick(d.id)} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", cursor:"pointer", borderBottom:"1px solid " + t.bord, background: d.id === value ? t.accBg : "transparent" }}>
+                <DogAvatar dog={d} size={24} />
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:12, fontWeight:800, color:t.text }}>{d.name}{d.noExpediente && <span style={{ marginLeft:5, fontSize:9, color:"#C2410C" }}>SIN EXPEDIENTE</span>}</div>
+                  <div style={{ fontSize:10, color:t.text3 }}>{[d.breed, d.owner].filter(Boolean).join(" · ")}</div>
+                </div>
+              </div>
+            ))}
+            {qq && list.length === 0 && <div style={{ padding:"8px 10px", fontSize:12, color:t.text3 }}>Sin resultados</div>}
+            {!qq && list.length === 0 && <div style={{ padding:"8px 10px", fontSize:11, color:t.text3 }}>Escribe para buscar en todos los expedientes</div>}
+            {allowNew && <div onClick={() => pick("new")} style={{ padding:"8px 10px", fontSize:12, fontWeight:800, color:"#C2410C", cursor:"pointer", background:"#FFF7ED" }}>＋ {newLabel}</div>}
+            <div onClick={() => { setOpen(false); setQ(""); }} style={{ padding:"6px 10px", fontSize:11, color:t.text3, cursor:"pointer", textAlign:"right" }}>Cerrar</div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function HotelImportModal({ dogs, dark, onClose }) {
   const t = getT(dark);
   const ref = useRef();
@@ -1534,11 +1576,7 @@ function HotelImportModal({ dogs, dark, onClose }) {
                       <td style={{ padding:"7px 10px", fontSize:12, color:t.text2 }}>{g.breed || "—"}</td>
                       <td style={{ padding:"7px 10px", fontSize:12, color:t.text2 }}>{g.rows.map(r => fmtShortDate(r.checkIn) + "–" + fmtShortDate(r.checkOut)).join(", ")}</td>
                       <td style={{ padding:"7px 10px" }}>
-                        <select value={g.dogId} onChange={e => setDog(g.id, e.target.value)} style={{ ...sel, borderColor: isNew ? "#F97316" : t.bord, color: isNew ? "#C2410C" : t.text, fontWeight:700 }}>
-                          <option value="new">SIN EXPEDIENTE (agregar)</option>
-                          {g.candidates.map(d => <option key={d.id} value={d.id}>{d.name}{d.breed ? " · " + d.breed : ""}{d.owner ? " · " + d.owner : ""}{d.noExpediente ? " (sin expediente)" : ""}</option>)}
-                          {g.candidates.length === 0 && <optgroup label="Otro expediente">{dogs.filter(d => !d.noExpediente).slice().sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(d => <option key={d.id} value={d.id}>{d.name}{d.breed ? " · " + d.breed : ""}</option>)}</optgroup>}
-                        </select>
+                        <DogSearchPick dark={dark} dogs={dogs} value={g.dogId} onChange={id => setDog(g.id, id)} allowNew suggestions={g.candidates} />
                       </td>
                     </tr>
                   ); })}
@@ -1591,11 +1629,21 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
   const allSel = list.length > 0 && selected.length === list.length;
   const toggleAll = () => setSel(allSel ? {} : Object.fromEntries(list.map(({ dog, stay }) => [keyOf(dog, stay), true])));
 
-  const saveStay = async (dog, stay) => {
+  const saveStay = async (dog, stay, fromDog) => {
     const fresh = dogs.find(d => d.id === dog.id) || dog;
     const stays = fresh.hotelStays || [];
     const next = stays.some(s => s.id === stay.id) ? stays.map(s => s.id === stay.id ? stay : s) : [...stays, stay];
-    try { await setDoc(doc(db, "dogs", fresh.id), { ...fresh, hotelStays: next }); setEditing(null); return true; }
+    try {
+      await setDoc(doc(db, "dogs", fresh.id), { ...fresh, hotelStays: next });
+      // Si se cambió de expediente, se quita del anterior; un "sin expediente" que se queda vacío se borra.
+      if (fromDog) {
+        const old = dogs.find(d => d.id === fromDog.id) || fromDog;
+        const rest = (old.hotelStays || []).filter(s => s.id !== stay.id);
+        if (old.noExpediente && rest.length === 0) await deleteDoc(doc(db, "dogs", old.id));
+        else await setDoc(doc(db, "dogs", old.id), { ...old, hotelStays: rest });
+      }
+      setEditing(null); return true;
+    }
     catch (e) { console.error(e); alert("No se pudo guardar la estancia: " + (e.message || e)); return false; }
   };
   const deleteStay = async (dog, stay) => {
