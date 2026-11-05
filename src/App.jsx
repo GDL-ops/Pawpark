@@ -3078,7 +3078,10 @@ export default function PawPark() {
   const isAdmin = currentUser?.isAdmin;
 
   const handleSave = async dog => {
-    if (dog.noExpediente && (dog.owner?.trim() || dog.phone?.trim())) dog = { ...dog, noExpediente: false };
+    // Un perrito "sin expediente" pasa a expediente normal (y a las alertas de vacunas) cuando ya tiene
+    // tutor, teléfono, alguna vacuna capturada o se marcó que no entregó cartilla.
+    const hasVaccines = Object.values(dog.vaccinations || {}).some(v => v?.applied || v?.expiry || v?.notRegistered);
+    if (dog.noExpediente && (dog.owner?.trim() || dog.phone?.trim() || hasVaccines || dog.noVaccineCard)) dog = { ...dog, noExpediente: false };
     try { await setDoc(doc(db, "dogs", dog.id), dog); }
     catch (e) {
       console.error(e);
