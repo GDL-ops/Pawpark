@@ -3117,6 +3117,16 @@ export default function PawPark() {
     if (filter==="incomplete") return pmiss(d).length>0;
     return true;
   });
+  // Visitas por perrito: sesiones de guardería + estancias de hotel (sin canceladas).
+  const visitCount = (() => {
+    const m = {};
+    sessions.forEach(x => { if (x.dogId) m[x.dogId] = (m[x.dogId] || 0) + 1; });
+    dogs.forEach(d => { const h = (d.hotelStays || []).filter(st => !st.cancelled).length; if (h) m[d.id] = (m[d.id] || 0) + h; });
+    return m;
+  })();
+  const byName = (a, b) => (a.name || "").localeCompare(b.name || "", "es", { sensitivity:"base" });
+  // "Todos": por abecedario. Los demás filtros: primero los que vienen más seguido a guardería y hotel.
+  filtered.sort(filter === "all" ? byName : (a, b) => (visitCount[b.id] || 0) - (visitCount[a.id] || 0) || byName(a, b));
 
   // Public display URL - no login needed
   if (typeof window !== "undefined" && (window.location.hash === "#pantalla" || window.location.search === "?pantalla")) {
@@ -3313,6 +3323,7 @@ export default function PawPark() {
                   const sv = dog.care?.supervisionLevel ? SUPV[dog.care.supervisionLevel] : null;
                   const miss = isAdmin ? pmiss(dog) : [];
                   const totalInc = (dog.hotelStays||[]).reduce((n,s)=>n+(s.incidents||[]).length,0);
+                  const visits = visitCount[dog.id] || 0;
                   return (
                     <Card key={dog.id} dark={dark} onClick={() => {setSelDog(dog);setView("detail");}} style={{ border:"2px solid " + VST[vs].color + "25" }}>
                       <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:9 }}>
@@ -3320,6 +3331,7 @@ export default function PawPark() {
                         <div style={{ flex:1 }}><div style={{ fontWeight:800, fontSize:14, color:t.text }}>{dog.name}{dog.noExpediente && <span style={{ marginLeft:6, background:"#F97316", color:"white", borderRadius:99, padding:"1px 7px", fontSize:9, fontWeight:800, verticalAlign:"middle" }}>SIN EXPEDIENTE</span>}</div><div style={{ fontSize:11, color:t.text2 }}>{dog.breed}{dog.sex?" - "+dog.sex:""}{dogAge(dog)?" - "+dogAge(dog):""}{dogSize(dog.weight) && <>{" - "}<span style={{ color:dogSize(dog.weight).color, fontWeight:800 }}>{dogSize(dog.weight).label}</span></>}</div></div>
                         <div style={{ display:"flex", flexDirection:"column", gap:3, alignItems:"flex-end" }}>
                           <VacBadge status={vs} sm />
+                          {filter !== "all" && <span title="Visitas a guardería y hotel" style={{ fontSize:10, fontWeight:800, color: visits ? t.accD : t.text3, background: visits ? t.accBg : "transparent", borderRadius:99, padding:"1px 7px" }}>🐾 {visits} visita{visits !== 1 ? "s" : ""}</span>}
                           {miss.length > 0 && <span style={{ background:t.accBg, color:t.acc, borderRadius:99, padding:"1px 6px", fontSize:9, fontWeight:800, border:"1px solid " + t.acc + "30" }}>Inc.</span>}
                         </div>
                       </div>
