@@ -1696,8 +1696,6 @@ function HotelPanel({ dogs, dark, onOpenDog }) {
           <span><b style={{ color:t.text }}>{active.length}</b> estancia{active.length !== 1 ? "s" : ""}</span>
           {cancelledN > 0 && <span><b style={{ color:"#DC2626" }}>{cancelledN}</b> cancelada{cancelledN !== 1 ? "s" : ""}</span>}
           <span><b style={{ color:t.text }}>{monthNights}</b> noche{monthNights !== 1 ? "s" : ""}</span>
-          <span>Total <b style={{ color:t.text }}>{fmtMoney(monthTotal)}</b></span>
-          {pending > 0 && <span>Por cobrar <b style={{ color:"#DC2626" }}>{fmtMoney(pending)}</b></span>}
         </div>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar perrito o tutor..." style={{ marginLeft:"auto", padding:"7px 13px", borderRadius:10, border:"1.5px solid " + t.bord, fontSize:13, background:t.surf, color:t.text, outline:"none", width:220, maxWidth:"100%" }} />
       </div>
