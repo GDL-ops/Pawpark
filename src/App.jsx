@@ -922,11 +922,12 @@ function PrintStayButton({ dog, stay, small }) {
 }
 
 // ---- HOTEL: jaulas, disponibilidad y acomodo --------------------------------
-// Jaulas 1–28 (15–28 están arriba: de preferencia para perritos pequeños y medianos) + lugares especiales.
+// Jaulas 1–28 (15–28 están arriba: de preferencia para perritos pequeños y medianos), 8 jaulas nuevas + lugares especiales.
 const CAMERA_ROOMS = [1, 4, 8, 13, 14];
 const UPPER_FROM = 15;
 const HOTEL_ROOMS = [
   ...Array.from({ length:28 }, (_, i) => { const n = i + 1; return { id:String(n), label:String(n), camera:CAMERA_ROOMS.includes(n), upper:n >= UPPER_FROM, special:false }; }),
+  ...Array.from({ length:8 }, (_, i) => ({ id:"n" + (i + 1), label:"Jaula nueva " + (i + 1), short:"N" + (i + 1), camera:false, upper:false, special:false, extra:true })),
   { id:"vet",   label:"Veterinario",    camera:false, upper:false, special:true },
   { id:"trans", label:"Transportadora", camera:false, upper:false, special:true },
 ];
@@ -934,9 +935,9 @@ const BIG_SIZES = new Set(["Grande", "Extra grande"]);
 const roomOf = cage => {
   const c = String(cage ?? "").trim().toLowerCase();
   if (!c) return null;
-  return HOTEL_ROOMS.find(r => r.id === c || r.label.toLowerCase() === c) || null;
+  return HOTEL_ROOMS.find(r => r.id === c || r.label.toLowerCase() === c || (r.short && r.short.toLowerCase() === c)) || null;
 };
-const roomLabel = cage => { const r = roomOf(cage); return r ? (r.special ? r.label : "Jaula " + r.label) : (cage ? "Jaula " + cage : ""); };
+const roomLabel = cage => { const r = roomOf(cage); return r ? (r.special || r.extra ? r.label : "Jaula " + r.label) : (cage ? "Jaula " + cage : ""); };
 const addDayYMD = ds => { const t = ymdToUTC(ds); if (t == null) return ds; const d = new Date(t + 864e5); return d.toISOString().slice(0, 10); };
 // Noches ocupadas: de la entrada al día anterior a la salida (el día de salida la jaula ya se puede volver a usar).
 // Si se marcó "ya se fue" antes de su fecha de salida, la jaula se libera desde ese día.
@@ -996,20 +997,21 @@ function acomodoHtml(all, from, to = from) {
   const entrada = occ => dates(occ, "checkIn");
   const body = rows.map(({ room, occ }) =>
     (room.id === String(UPPER_FROM) ? '<tr><td colspan="' + (to && to !== from ? 5 : 4) + '" class="sec">ARRIBA (jaulas ' + UPPER_FROM + '–28)</td></tr>' : '') +
+    (room.id === "n1" ? '<tr><td colspan="' + (to && to !== from ? 5 : 4) + '" class="sec">JAULAS NUEVAS</td></tr>' : '') +
     (room.id === "vet" ? '<tr><td colspan="' + (to && to !== from ? 5 : 4) + '" class="sec">OTROS</td></tr>' : '') +
-    '<tr class="' + (occ.length ? 'occ' : '') + '"><td class="dog">' + who(occ) + '</td><td class="c">' + (room.special ? '<b>' + room.label.toUpperCase() + '</b>' : room.label) + '</td><td class="c' + (room.camera ? ' cam' : '') + '">' + (room.special ? '' : room.camera ? 'CON CÁMARA' : 'SIN CÁMARA') + '</td>' + (isRange ? '<td class="c">' + entrada(occ) + '</td>' : '') + '<td class="c">' + salida(occ) + '</td></tr>'
+    '<tr class="' + (occ.length ? 'occ' : '') + '"><td class="dog">' + who(occ) + '</td><td class="c">' + (room.special || room.extra ? '<b>' + room.label.toUpperCase() + '</b>' : room.label) + '</td><td class="c' + (room.camera ? ' cam' : '') + '">' + (room.special ? '' : room.camera ? 'CON CÁMARA' : 'SIN CÁMARA') + '</td>' + (isRange ? '<td class="c">' + entrada(occ) + '</td>' : '') + '<td class="c">' + salida(occ) + '</td></tr>'
   ).join("");
   const un = unassignedOnDay(all, from, to);
   const total = rows.reduce((n, r) => n + r.occ.length, 0) + un.length;
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acomodo hotel ' + escHtml(dateTitle) + '</title><style>' +
-    '@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}' +
+    '@page{size:A4 portrait;margin:7mm}*{box-sizing:border-box}' +
     'body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     'h1{font-size:16px;margin:0 0 2px}.sub{font-size:11px;color:#444;margin-bottom:6px}' +
     'table{width:100%;border-collapse:collapse}th{background:#eee;font-size:12px;padding:4px 6px;border:1px solid #111}' +
-    'td{border:1px solid #111;padding:2px 7px;font-size:13px;height:30px;vertical-align:middle}' +
+    'td{border:1px solid #111;padding:0 7px;font-size:12px;height:24px;vertical-align:middle}' +
     'td.c{text-align:center}td.dog{width:' + (isRange ? 46 : 52) + '%}td.cam{font-weight:bold}tr.occ td.dog{background:#F3F9EC}' +
-    'td.sec{background:#ddd;font-weight:bold;font-size:10px;letter-spacing:.08em;text-align:center;height:16px;padding:1px}' +
-    '.n{font-size:22px;font-weight:900;line-height:1.1}.br{font-size:12px;color:#333}.sep{font-size:20px;font-weight:900}' +
+    'td.sec{background:#ddd;font-weight:bold;font-size:9px;letter-spacing:.08em;text-align:center;height:13px;padding:0}' +
+    '.n{font-size:19px;font-weight:900;line-height:1.05}.br{font-size:12px;color:#333}.sep{font-size:20px;font-weight:900}' +
     '.sm{font-size:10px;color:#444}.warn{margin-top:6px;font-size:11px;color:#B91C1C}' +
     '</style></head><body>' +
     '<h1>PAW PARK · Acomodo de hotel</h1><div class="sub">' + escHtml(dateTitle) + ' · ' + total + ' perrito' + (total !== 1 ? 's' : '') + (isRange ? ' en esas fechas' : ' hospedado' + (total !== 1 ? 's' : '')) + '</div>' +
@@ -1064,9 +1066,9 @@ function RoomPicker({ all, stay, dog, onPick, onCamera, dark }) {
           onPick(r.id, false);
         }}
         title={busy ? "Ocupada: " + occ.map(o => o.dog.name + " (" + fmtDMY(o.stay.checkIn) + "–" + fmtDMY(o.stay.checkOut) + ")").join(", ") : notRec ? "Arriba: mejor abajo mientras haya lugar" : "Disponible"}
-        style={{ minWidth: r.special ? 104 : 46, padding:"5px 4px", borderRadius:8, border:"1.5px solid " + (on ? (busy ? "#EF4444" : "#143B31") : r.camera ? "#3B82F6" : t.bord), background:bg, color:col, cursor:"pointer", fontSize:12, fontWeight:800, lineHeight:1.15, textAlign:"center" }}>
+        style={{ minWidth: r.special || r.extra ? 104 : 46, padding:"5px 4px", borderRadius:8, border:"1.5px solid " + (on ? (busy ? "#EF4444" : "#143B31") : r.camera ? "#3B82F6" : t.bord), background:bg, color:col, cursor:"pointer", fontSize:12, fontWeight:800, lineHeight:1.15, textAlign:"center" }}>
         {r.label}{r.camera && " 📷"}
-        <div style={{ fontSize:9, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth: r.special ? 96 : 44 }}>{sharedHere ? "👥 + " + occ[0].dog.name : busy ? occ[0].dog.name : notRec ? "mejor abajo" : ""}</div>
+        <div style={{ fontSize:9, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth: r.special || r.extra ? 96 : 44 }}>{sharedHere ? "👥 + " + occ[0].dog.name : busy ? occ[0].dog.name : notRec ? "mejor abajo" : ""}</div>
       </button>
     );
   };
@@ -1098,9 +1100,11 @@ function RoomPicker({ all, stay, dog, onPick, onCamera, dark }) {
             </div>
           </div>
           <div style={{ fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.06em" }}>ABAJO (1–{UPPER_FROM - 1})</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => !r.special && !r.upper).map(cell)}</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => !r.special && !r.upper && !r.extra).map(cell)}</div>
           <div style={{ fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.06em" }}>ARRIBA ({UPPER_FROM}–28) · de preferencia pequeños y medianos</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => !r.special && r.upper).map(cell)}</div>
+          <div style={{ fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.06em" }}>JAULAS NUEVAS</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => r.extra).map(cell)}</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{HOTEL_ROOMS.filter(r => r.special).map(cell)}</div>
         </>
       )}
@@ -1162,6 +1166,7 @@ function AcomodoView({ all, dark, onEdit }) {
             {rows.map(({ room, occ }) => (
               <Fragment key={room.id}>
                 {room.id === String(UPPER_FROM) && <tr><td colSpan={isRange ? 5 : 4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>ARRIBA (JAULAS {UPPER_FROM}–28) · DE PREFERENCIA PEQUEÑOS Y MEDIANOS</td></tr>}
+                {room.id === "n1" && <tr><td colSpan={isRange ? 5 : 4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>JAULAS NUEVAS</td></tr>}
                 {room.id === "vet" && <tr><td colSpan={isRange ? 5 : 4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>OTROS</td></tr>}
                 <tr style={{ background: occ.some((o, i) => occ.some((o2, j) => j !== i && !sharesCage(o.stay, o2.stay) && staysOverlap(o.stay, o2.stay))) ? "#FEF2F2" : occ.length ? (dark ? "#14301F" : "#F3F9EC") : "transparent" }}>
                   <td style={td}>{occ.map(({ dog, stay }) => (
