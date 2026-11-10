@@ -968,25 +968,38 @@ function suggestRoom(all, range, dog, wantsCamera, excludeId) {
 }
 const fmtShortDate = ds => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ds || ""); return m ? (+m[3]) + " " + MONTHS_ES[+m[2] - 1].slice(0, 3).toLowerCase() : ""; };
 // Quién está en cada jaula un día (incluye a los que salen o llegan ese día).
-function roomsOnDay(all, day) {
-  return HOTEL_ROOMS.map(r => ({ room:r, occ: all.filter(({ stay }) => !stay.cancelled && roomOf(stay.cage)?.id === r.id && stay.checkIn && stay.checkIn <= day && (!realOut(stay) || realOut(stay) >= day)).sort((a, b) => (a.stay.checkIn || "").localeCompare(b.stay.checkIn || "")) }));
+// Estancia presente en algún día del rango (incluye los días de llegada y de salida).
+const inRange = (stay, from, to = from) => !stay.cancelled && !!stay.checkIn && stay.checkIn <= to && (!realOut(stay) || realOut(stay) >= from);
+function roomsOnDay(all, from, to = from) {
+  return HOTEL_ROOMS.map(r => ({ room:r, occ: all.filter(({ stay }) => roomOf(stay.cage)?.id === r.id && inRange(stay, from, to)).sort((a, b) => (a.stay.checkIn || "").localeCompare(b.stay.checkIn || "")) }));
 }
-const unassignedOnDay = (all, day) => all.filter(({ stay }) => !stay.cancelled && !roomOf(stay.cage) && stay.checkIn && stay.checkIn <= day && (!realOut(stay) || realOut(stay) >= day));
+const unassignedOnDay = (all, from, to = from) => all.filter(({ stay }) => !roomOf(stay.cage) && inRange(stay, from, to));
+const fmtRangeTitle = (from, to) => {
+  const p = ds => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ds) || []; return { d:+m[3], m:MONTHS_ES[+m[2] - 1]?.toLowerCase(), y:m[1] }; };
+  const a = p(from), b = p(to);
+  if (!to || to === from) return a.d + " de " + a.m + " " + a.y;
+  if (a.m === b.m && a.y === b.y) return "Del " + a.d + " al " + b.d + " de " + a.m + " " + a.y;
+  return "Del " + a.d + " de " + a.m + (a.y !== b.y ? " " + a.y : "") + " al " + b.d + " de " + b.m + " " + b.y;
+};
 
-function acomodoHtml(all, day) {
-  const rows = roomsOnDay(all, day);
-  const dateTitle = (() => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day); return m ? (+m[3]) + " de " + MONTHS_ES[+m[2] - 1].toLowerCase() + " " + m[1] : day; })();
+function acomodoHtml(all, from, to = from) {
+  const isRange = to && to !== from;
+  const rows = roomsOnDay(all, from, to);
+  const dateTitle = fmtRangeTitle(from, to);
   // Nombre grande en negritas + raza; si comparten jaula: "Bruno border collie - Taquito pug".
-  const who = occ => occ.map(({ dog }) =>
-    '<span class="n">' + escHtml(dog.name) + '</span>' + (dog.breed ? ' <span class="br">' + escHtml(dog.breed.toLowerCase()) + '</span>' : '')
-  ).join('<span class="sep"> - </span>');
-  const salida = occ => [...new Set(occ.map(({ stay }) => fmtShortDate(stay.checkOut)).filter(Boolean))].join(" / ");
+  // En un rango, los que usan la jaula en días distintos van en renglones separados.
+  const one = ({ dog }) => '<span class="n">' + escHtml(dog.name) + '</span>' + (dog.breed ? ' <span class="br">' + escHtml(dog.breed.toLowerCase()) + '</span>' : '');
+  const together = occ => occ.every((o, i) => i === 0 || sharesCage(occ[0].stay, o.stay));
+  const who = occ => together(occ) ? occ.map(one).join('<span class="sep"> - </span>') : occ.map(one).join('<br>');
+  const dates = (occ, key) => together(occ) ? [...new Set(occ.map(({ stay }) => fmtShortDate(stay[key])).filter(Boolean))].join(" / ") : occ.map(({ stay }) => fmtShortDate(stay[key]) || "—").join("<br>");
+  const salida = occ => dates(occ, "checkOut");
+  const entrada = occ => dates(occ, "checkIn");
   const body = rows.map(({ room, occ }) =>
-    (room.id === String(UPPER_FROM) ? '<tr><td colspan="4" class="sec">ARRIBA (jaulas ' + UPPER_FROM + '–28)</td></tr>' : '') +
-    (room.id === "vet" ? '<tr><td colspan="4" class="sec">OTROS</td></tr>' : '') +
-    '<tr class="' + (occ.length ? 'occ' : '') + '"><td class="dog">' + who(occ) + '</td><td class="c">' + (room.special ? '<b>' + room.label.toUpperCase() + '</b>' : room.label) + '</td><td class="c' + (room.camera ? ' cam' : '') + '">' + (room.special ? '' : room.camera ? 'CON CÁMARA' : 'SIN CÁMARA') + '</td><td class="c">' + salida(occ) + '</td></tr>'
+    (room.id === String(UPPER_FROM) ? '<tr><td colspan="' + (to && to !== from ? 5 : 4) + '" class="sec">ARRIBA (jaulas ' + UPPER_FROM + '–28)</td></tr>' : '') +
+    (room.id === "vet" ? '<tr><td colspan="' + (to && to !== from ? 5 : 4) + '" class="sec">OTROS</td></tr>' : '') +
+    '<tr class="' + (occ.length ? 'occ' : '') + '"><td class="dog">' + who(occ) + '</td><td class="c">' + (room.special ? '<b>' + room.label.toUpperCase() + '</b>' : room.label) + '</td><td class="c' + (room.camera ? ' cam' : '') + '">' + (room.special ? '' : room.camera ? 'CON CÁMARA' : 'SIN CÁMARA') + '</td>' + (isRange ? '<td class="c">' + entrada(occ) + '</td>' : '') + '<td class="c">' + salida(occ) + '</td></tr>'
   ).join("");
-  const un = unassignedOnDay(all, day);
+  const un = unassignedOnDay(all, from, to);
   const total = rows.reduce((n, r) => n + r.occ.length, 0) + un.length;
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acomodo hotel ' + escHtml(dateTitle) + '</title><style>' +
     '@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}' +
@@ -994,13 +1007,13 @@ function acomodoHtml(all, day) {
     'h1{font-size:16px;margin:0 0 2px}.sub{font-size:11px;color:#444;margin-bottom:6px}' +
     'table{width:100%;border-collapse:collapse}th{background:#eee;font-size:12px;padding:4px 6px;border:1px solid #111}' +
     'td{border:1px solid #111;padding:2px 7px;font-size:13px;height:30px;vertical-align:middle}' +
-    'td.c{text-align:center}td.dog{width:52%}td.cam{font-weight:bold}tr.occ td.dog{background:#F3F9EC}' +
+    'td.c{text-align:center}td.dog{width:' + (isRange ? 46 : 52) + '%}td.cam{font-weight:bold}tr.occ td.dog{background:#F3F9EC}' +
     'td.sec{background:#ddd;font-weight:bold;font-size:10px;letter-spacing:.08em;text-align:center;height:16px;padding:1px}' +
     '.n{font-size:22px;font-weight:900;line-height:1.1}.br{font-size:12px;color:#333}.sep{font-size:20px;font-weight:900}' +
     '.sm{font-size:10px;color:#444}.warn{margin-top:6px;font-size:11px;color:#B91C1C}' +
     '</style></head><body>' +
-    '<h1>PAW PARK · Acomodo de hotel</h1><div class="sub">' + escHtml(dateTitle) + ' · ' + total + ' perrito' + (total !== 1 ? 's' : '') + ' hospedado' + (total !== 1 ? 's' : '') + '</div>' +
-    '<table><thead><tr><th>PERRO</th><th>HABITACIÓN</th><th></th><th>SALIDA</th></tr></thead><tbody>' + body + '</tbody></table>' +
+    '<h1>PAW PARK · Acomodo de hotel</h1><div class="sub">' + escHtml(dateTitle) + ' · ' + total + ' perrito' + (total !== 1 ? 's' : '') + (isRange ? ' en esas fechas' : ' hospedado' + (total !== 1 ? 's' : '')) + '</div>' +
+    '<table><thead><tr><th>PERRO</th><th>HABITACIÓN</th><th></th>' + (isRange ? '<th>ENTRADA</th>' : '') + '<th>SALIDA</th></tr></thead><tbody>' + body + '</tbody></table>' +
     (un.length ? '<div class="warn">Sin jaula asignada: ' + un.map(({ dog }) => escHtml(dog.name)).join(", ") + '</div>' : '') +
     '</body></html>';
 }
@@ -1098,11 +1111,15 @@ function RoomPicker({ all, stay, dog, onPick, onCamera, dark }) {
 // Vista de acomodo: quién está en cada jaula en un día y consulta de disponibilidad.
 function AcomodoView({ all, dark, onEdit }) {
   const t = getT(dark);
-  const [day, setDay] = useState(todayYMD());
+  const [day, setDayRaw] = useState(todayYMD());
+  const [dayTo, setDayTo] = useState(todayYMD());
+  const setDay = v => { setDayRaw(v); if (!dayTo || dayTo < v || dayTo === day) setDayTo(v); };
+  const to = dayTo && dayTo >= day ? dayTo : day;
+  const isRange = to !== day;
   const [qIn, setQIn] = useState(todayYMD());
   const [qOut, setQOut] = useState("");
-  const rows = roomsOnDay(all, day);
-  const un = unassignedOnDay(all, day);
+  const rows = roomsOnDay(all, day, to);
+  const un = unassignedOnDay(all, day, to);
   const occupied = rows.filter(r => r.occ.length && !r.room.special).length;
   const regular = HOTEL_ROOMS.filter(r => !r.special).length;
   const qRange = { checkIn: qIn, checkOut: qOut };
@@ -1130,31 +1147,34 @@ function AcomodoView({ all, dark, onEdit }) {
 
       <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
         <div style={{ display:"flex", gap:12, alignItems:"flex-end", flexWrap:"wrap" }}>
-          <div style={{ width:170 }}><Field dark={dark} label="ACOMODO DEL DÍA" type="date" value={day} onChange={v => v && setDay(v)} /></div>
+          <div style={{ width:160 }}><Field dark={dark} label="ACOMODO DEL" type="date" value={day} onChange={v => v && setDay(v)} /></div>
+          <div style={{ width:160 }}><Field dark={dark} label="AL" type="date" value={to} onChange={v => setDayTo(v && v >= day ? v : day)} /></div>
+          {isRange && <button onClick={() => setDayTo(day)} style={{ marginBottom:4, padding:"6px 10px", borderRadius:8, border:"1px solid " + t.bord, background:t.surf, color:t.text3, fontSize:11, fontWeight:700, cursor:"pointer" }}>Solo un día</button>}
           <div style={{ fontSize:12, color:t.text2, paddingBottom:10 }}><b style={{ color:t.text }}>{occupied}</b> de {regular} jaulas ocupadas · <b style={{ color:t.text }}>{regular - occupied}</b> libres</div>
         </div>
-        <button onClick={() => printHtml(acomodoHtml(all, day))} style={{ padding:"9px 16px", borderRadius:11, border:"1.5px solid #143B31", background:"#E8F0DC", color:"#143B31", fontWeight:800, cursor:"pointer", fontSize:13 }}>🖨 Imprimir acomodo</button>
+        <button onClick={() => printHtml(acomodoHtml(all, day, to))} style={{ padding:"9px 16px", borderRadius:11, border:"1.5px solid #143B31", background:"#E8F0DC", color:"#143B31", fontWeight:800, cursor:"pointer", fontSize:13 }}>🖨 Imprimir acomodo</button>
       </div>
       {un.length > 0 && <div style={{ padding:"9px 13px", borderRadius:10, background:"#FEF2F2", border:"1px solid #FECACA", color:"#B91C1C", fontSize:12, fontWeight:700 }}>⚠ Sin jaula asignada: {un.map(({ dog, stay }) => <button key={stay.id} onClick={() => onEdit(dog, stay)} style={{ border:"none", background:"none", color:"#B91C1C", textDecoration:"underline", fontWeight:800, cursor:"pointer", fontSize:12, padding:"0 3px" }}>{dog.name}</button>)}</div>}
       <div style={{ overflowX:"auto", borderRadius:14, border:"1px solid " + t.bord, background:t.surf }}>
         <table style={{ width:"100%", borderCollapse:"collapse", minWidth:560 }}>
-          <thead><tr>{["Perro","Habitación","Cámara","Salida"].map(h => <th key={h} style={{ padding:"9px 10px", background:"#C1712C", color:"white", fontSize:12, fontWeight:800, textAlign: h === "Perro" ? "left" : "center" }}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Perro","Habitación","Cámara", ...(isRange ? ["Entrada"] : []), "Salida"].map(h => <th key={h} style={{ padding:"9px 10px", background:"#C1712C", color:"white", fontSize:12, fontWeight:800, textAlign: h === "Perro" ? "left" : "center" }}>{h}</th>)}</tr></thead>
           <tbody>
             {rows.map(({ room, occ }) => (
               <Fragment key={room.id}>
-                {room.id === String(UPPER_FROM) && <tr><td colSpan={4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>ARRIBA (JAULAS {UPPER_FROM}–28) · DE PREFERENCIA PEQUEÑOS Y MEDIANOS</td></tr>}
-                {room.id === "vet" && <tr><td colSpan={4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>OTROS</td></tr>}
+                {room.id === String(UPPER_FROM) && <tr><td colSpan={isRange ? 5 : 4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>ARRIBA (JAULAS {UPPER_FROM}–28) · DE PREFERENCIA PEQUEÑOS Y MEDIANOS</td></tr>}
+                {room.id === "vet" && <tr><td colSpan={isRange ? 5 : 4} style={{ ...td, background:t.surf2, fontSize:10, fontWeight:800, color:t.text3, letterSpacing:"0.08em", textAlign:"center", padding:"4px" }}>OTROS</td></tr>}
                 <tr style={{ background: occ.some((o, i) => occ.some((o2, j) => j !== i && !sharesCage(o.stay, o2.stay) && staysOverlap(o.stay, o2.stay))) ? "#FEF2F2" : occ.length ? (dark ? "#14301F" : "#F3F9EC") : "transparent" }}>
                   <td style={td}>{occ.map(({ dog, stay }) => (
                     <div key={stay.id} onClick={() => onEdit(dog, stay)} style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer", padding:"1px 0" }}>
                       <DogAvatar dog={dog} size={22} /><b>{dog.name}</b>{dog.noExpediente && <span style={{ background:"#F97316", color:"white", borderRadius:99, padding:"0 6px", fontSize:9, fontWeight:800 }}>SIN EXPEDIENTE</span>}
                       {dog.breed && <span style={{ fontSize:11, color:t.text3 }}>{dog.breed}</span>}
-                      {stay.checkOut === day && <span style={{ fontSize:10, fontWeight:800, color:"#C2410C" }}>SALE HOY</span>}
-                      {stay.checkIn === day && <span style={{ fontSize:10, fontWeight:800, color:"#15803D" }}>LLEGA HOY</span>}
+                      {!isRange && stay.checkOut === day && <span style={{ fontSize:10, fontWeight:800, color:"#C2410C" }}>SALE HOY</span>}
+                      {!isRange && stay.checkIn === day && <span style={{ fontSize:10, fontWeight:800, color:"#15803D" }}>LLEGA HOY</span>}
                     </div>
                   ))}</td>
                   <td style={{ ...td, textAlign:"center", fontWeight:800 }}>{room.label}</td>
                   <td style={{ ...td, textAlign:"center", fontSize:12, fontWeight: room.camera ? 800 : 500, color: room.camera ? "#2563EB" : t.text3 }}>{room.special ? "" : room.camera ? "📷 Con cámara" : "Sin cámara"}</td>
+                  {isRange && <td style={{ ...td, textAlign:"center", fontSize:12 }}>{occ.map(({ stay }) => <div key={stay.id}>{fmtShortDate(stay.checkIn)}</div>)}</td>}
                   <td style={{ ...td, textAlign:"center", fontSize:12 }}>{occ.map(({ stay }) => <div key={stay.id}>{fmtShortDate(stay.checkOut)}</div>)}</td>
                 </tr>
               </Fragment>
