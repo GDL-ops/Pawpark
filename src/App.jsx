@@ -81,10 +81,13 @@ const defDog = () => ({
 function buildWAMsg(dog) {
   const expired = VACCINES.filter(v => gvs(dog.vaccinations?.[v.id]) === "expired");
   const soon = VACCINES.filter(v => gvs(dog.vaccinations?.[v.id]) === "soon");
-  let msg = "Hola " + (dog.owner||"") + ", te contactamos de *Paw Park* sobre *" + (dog.name||"tu perrito") + "*.\n\n";
-  if (expired.length) msg += "*Vacunas vencidas:*\n" + expired.map(v => "- " + v.label).join("\n") + "\n\n";
-  if (soon.length) msg += "*Por vencer:*\n" + soon.map(v => { const d = ddiff(dog.vaccinations[v.id].expiry); return "- " + v.label + " (en " + d + " dias)"; }).join("\n") + "\n\n";
-  msg += "Por favor actualiza las vacunas antes de la proxima visita. Gracias!";
+  const name = "*" + (dog.name || "tu perrito") + "*";
+  const que = expired.length && soon.length ? "vacunas vencidas y próximas a vencer"
+    : expired.length ? "vacunas vencidas" : soon.length ? "vacunas próximas a vencer" : "vacunas pendientes de actualizar";
+  let msg = "¡Hola, buen día! " + name + " cuenta con " + que + ":\n\n";
+  if (expired.length) msg += "*Vencidas:*\n" + expired.map(v => "- " + v.label).join("\n") + "\n\n";
+  if (soon.length) msg += "*Próximas a vencer:*\n" + soon.map(v => { const d = ddiff(dog.vaccinations[v.id].expiry); return "- " + v.label + " (en " + d + " día" + (d === 1 ? "" : "s") + ")"; }).join("\n") + "\n\n";
+  msg += "Por favor actualiza las vacunas antes de su próxima visita a Paw Park y envíanos una captura de su actualización para registrarlo en sistema. ¡Gracias, quedamos atentos! 💚";
   return msg;
 }
 function openWA(phone, msg) {
